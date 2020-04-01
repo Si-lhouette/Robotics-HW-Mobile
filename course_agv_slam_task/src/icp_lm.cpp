@@ -2,6 +2,8 @@
 #include "ros/console.h"
 #include <stdio.h>
 
+#include <cmath>
+
 #include <numeric>
 #include <vector>
 #include <Eigen/Eigen>
@@ -107,16 +109,103 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
         return;
     }
 
+    src_pc = this->landMarksToMatrix(input);
+    if(src_pc.cols() < min_match){
+        return;
+    }
+    MatrixXd src_pc_copy;
+    src_pc_copy = src_pc;
+
     // init some variables
     Eigen::Matrix3d Transform_acc = Eigen::MatrixXd::Identity(3,3);
+    Eigen::Matrix2d R_all = Eigen::MatrixXd::Identity(2,2);
+    Eigen::Vector2d T_all;
+    T_all << 0.0,0.0,0.0;
+    double elast = 0;
 
     // main LOOP
     for(int i=0; i<max_iter; i++)
     {
-        // TODO: please code by yourself
+
+        cout<<"loop_"<<i<<endl;
+        //1. Find neareast correspond
+        NeighBor s_t_near;
+        s_t_near = findNearest(src_pc, tar_pc);
+
+
+
+        //cout<<"findNearest Done"<<endl;
+        MatrixXd tar_pcn;
+        MatrixXd src_pcn;
+
+
+        int s_num = s_t_near.src_indices.size();
+
+        src_pcn = Eigen::MatrixXd::Constant(3, s_num, 1);
+        tar_pcn = Eigen::MatrixXd::Constant(3, s_num, 1);
+        for(int j = 0; j < s_num; j++){
+            src_pcn.col(j) = src_pc.col(s_t_near.src_indices[j]);
+            tar_pcn.col(j) = tar_pc.col(s_t_near.tar_indices[j]);
+        }
+
+
+        //2. Solve for RotationMatrix & translation vector
+        double tx_mean = tar_pcn.row(0).mean();
+        double ty_mean = tar_pcn.row(1).mean();
+        tar_pcn.row(0) -=  Eigen::MatrixXd::Constant(1, s_num, tx_mean);
+        tar_pcn.row(1) -=  Eigen::MatrixXd::Constant(1, s_num, ty_mean);
+
+        double sx_mean = src_pcn.row(0).mean();
+        double sy_mean = src_pcn.row(1).mean();
+        src_pcn.row(0) -=  Eigen::MatrixXd::Constant(1, s_num, sx_mean);
+        src_pcn.row(1) -=  Eigen::MatrixXd::Constant(1, s_num, sy_mean); 
+
+        MatrixXd W = Eigen::MatrixXd::Zero(2,2);
+        W = src_pcn.topRows(2) * tar_pcn.topRows(2).transpose();
+
+        // SVD on W
+        Eigen::JacobiSVD<Eigen::Matrix2d> svd(W, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Matrix2d U = svd.matrixU();
+        Eigen::Matrix2d V = svd.matrixV();
+
+        Eigen::Matrix2d R_12 = V* (U.transpose());
+        Eigen::Vector2d T_12 = Eigen::Vector2d(tx_mean, ty_mean) - R_12 * Eigen::Vector2d(sx_mean, sy_mean);
+
+        //3. Updata R&T
+        T_all = R_12 * T_all + T_12;
+        R_all = R_12 * R_all;
+        Transform_acc.block(0,0,2,2) = R_all;
+        Transform_acc.block(0,2,2,1) = T_all;
+        src_pc = Transform_acc*src_pc_copy;
+
+
+        //4. Cheak error tolerance
+
+        double e = accumulate(s_t_near.distances.begin(), s_t_near.distances.end(), 0.0) / s_num;
+        if(i<=70){
+            cout<<"e:"<<e<<endl;
+        }
+        if(e < tolerance || fabs((e - elast)/elast) <0.01 ){
+            cout<<"loop_"<<i<<endl;
+            cout<<"e:"<<e<<endl;
+            break;
+        }
+
+
+
+
+
+
+
+
+
     }
 
-    tar_pc = this->landMarksToMatrix(input);
+    tar_pc = src_pc_copy;
+
+
+    Transform_acc.block(0,0,2,2) = R_all;
+    Transform_acc.block(0,2,2,1) = T_all;
 
     this->publishResult(Transform_acc);
 
@@ -141,18 +230,46 @@ Eigen::MatrixXd icp_lm::landMarksToMatrix(visualization_msgs::MarkerArray input)
 
 NeighBor icp_lm::findNearest(const Eigen::MatrixXd &src, const Eigen::MatrixXd &tar)
 {
-    // TODO: please code by yourself
+    vector<float> dist;
+    vector<int> src_ind, tar_ind;
+    NeighBor res;
+    MatrixXd src_coord(2, src.cols()), tar_coord(2, tar.cols()), temp_coord(2, tar.cols());
+    VectorXd distance(tar.cols());
+    VectorXd::Index minInd;
+    double minNum;
+
+    src_coord = src.topRows(2);
+    tar_coord = tar.topRows(2);
+
+    for(int i = 0; i < src_coord.cols(); i++){
+        temp_coord = tar_coord;
+        temp_coord.colwise() -= src_coord.col(i);
+        distance = temp_coord.array().square().colwise().sum();
+        minNum = distance.minCoeff(&minInd);
+
+        if(minNum >= dis_th)
+            continue;
+        dist.push_back(sqrt(minNum));
+        src_ind.push_back(i);
+        tar_ind.push_back(minInd);
+    }
+
+    res.distances = dist;
+    res.src_indices = src_ind;
+    res.tar_indices = tar_ind;
+
+    return res;
 }
 
-Eigen::Matrix3d icp_lm::getTransform(const Eigen::MatrixXd &src, const Eigen::MatrixXd &tar)
-{
-    // TODO: please code by yourself
-}
+// Eigen::Matrix3d icp_lm::getTransform(const Eigen::MatrixXd &src, const Eigen::MatrixXd &tar)
+// {
+//     // TODO: please code by yourself
+// }
 
-float icp_lm::calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb)
-{
-    // TODO: please code by yourself
-}
+// float icp_lm::calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb)
+// {
+//     // TODO: please code by yourself
+// }
 
 Eigen::Matrix3d icp_lm::staToMatrix(Eigen::Vector3d sta)
 {

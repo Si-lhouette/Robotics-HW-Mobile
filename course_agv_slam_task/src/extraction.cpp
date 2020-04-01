@@ -37,6 +37,7 @@ public:
     ros::Subscriber laser_sub;
     // publish the landMarks as ros::Markers
     ros::Publisher landMark_pub;
+    ros::Publisher laser_pub;
 
     // main process
     void process(sensor_msgs::LaserScan input);
@@ -60,6 +61,7 @@ extraction::extraction(ros::NodeHandle& n):n(n)
     
     landMark_pub = n.advertise<visualization_msgs::MarkerArray>("landMarks", 1);
     laser_sub = n.subscribe("/course_agv/laser/scan", 1, &extraction::process, this);
+    laser_pub = n.advertise<sensor_msgs::LaserScan>("myscan",1);
 }
 
 void extraction::process(sensor_msgs::LaserScan input)
@@ -82,8 +84,8 @@ void extraction::process(sensor_msgs::LaserScan input)
         angle = input.angle_min + i * input.angle_increment;
         curr_xy << input.ranges[i] * std::cos(angle), input.ranges[i] * std::sin(angle);
         
-        delta_dis = this->calc_dist(curr_xy, last_xy);
-
+        delta_dis = this->calc_dist(curr_xy, last_xy); //the distance from last point
+        //cout<<"deldis"<<delta_dis<<endl;
         if(delta_dis > range_threshold)
             label++;
 
@@ -95,6 +97,8 @@ void extraction::process(sensor_msgs::LaserScan input)
     cout<<"Total original labels: "<<label<<endl;
 
     LandMarkSet landmarks_ = this->extractLandMark(laser_extr);
+
+    this->laser_pub.publish(laser_extr);
 
     this->publishLandMark(landmarks_);
 
@@ -109,6 +113,63 @@ LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
     LandMarkSet landMarks;
 
     // TODO: please code by yourself
+    float angle;
+
+    double dis;
+
+    int cnt = 0;
+    int len = 1;
+    int exp_label = 0;
+
+    bool firstlast = true;
+    Vector2d last_xy;
+    Vector2d form_xy;
+    Vector2d curr_xy;
+
+    for(int i=0; i<total_num; i++)
+    {   
+
+        
+        
+        if(input.intensities[i] == exp_label){
+            
+            cout<<"label:"<<input.intensities[i]-1 <<endl;
+            angle = input.angle_min + i * input.angle_increment;
+            curr_xy << input.ranges[i] * std::cos(angle), input.ranges[i] * std::sin(angle);
+
+            if(firstlast){
+                last_xy = curr_xy;
+                firstlast = false;
+                exp_label++;
+                continue;
+            }
+            angle = input.angle_min + (i-1) * input.angle_increment;
+            form_xy << input.ranges[i-1] * std::cos(angle), input.ranges[i-1] * std::sin(angle);
+            dis = calc_dist(last_xy, form_xy);
+            cout<<"dis"<<dis<<endl;
+
+            if(dis < radius_max_th && len >= landMark_min_pt){
+                landMarks.id.push_back(cnt);
+                cnt++;
+
+                landMarks.position_x.push_back((last_xy(0)+form_xy(0))/2);
+                landMarks.position_y.push_back((last_xy(1)+form_xy(1))/2);
+            }
+
+
+            last_xy = curr_xy;
+            exp_label++;
+            len = 1;
+        }
+        else{
+            len++;
+        }
+
+
+    }
+    cout<<"cnt:"<<cnt<<endl;
+
+
 
     return landMarks;
 }
@@ -140,7 +201,7 @@ void extraction::publishLandMark(LandMarkSet input)
         landMark_array_msg.markers[i].scale.x = 0.2;
         landMark_array_msg.markers[i].scale.y = 0.2;
         landMark_array_msg.markers[i].scale.z = 0.2;
-        landMark_array_msg.markers[i].color.a = 0.5; // Don't forget to set the alpha!
+        landMark_array_msg.markers[i].color.a = 0.4; // Don't forget to set the alpha!
         landMark_array_msg.markers[i].color.r = 0.0;
         landMark_array_msg.markers[i].color.g = 0.0;
         landMark_array_msg.markers[i].color.b = 1.0;
@@ -152,6 +213,7 @@ void extraction::publishLandMark(LandMarkSet input)
 float extraction::calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb)
 {
     // TODO: please code by yourself
+    return (pta - ptb).norm();
 }
 
 int main(int argc, char **argv)

@@ -1,0 +1,9 @@
+<launch>
+
+
+  
+  <include file="$(find course_agv_slam_task)/launch/extraction.launch"></include>
+  <include file="$(find course_agv_slam_task)/launch/icp_lm.launch"></include>
+
+
+</launch>
