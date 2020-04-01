@@ -8,11 +8,11 @@
 		<param name="robot_theta" value="0"/>
 
 		<param name="max_iter" value="300"/>
-		<param name="tolerance" value="0.0001"/>
+		<param name="tolerance" value="0.00001"/>
 		<param name="dis_th" value="0.3"/>
 
 		<param name="laser_max" value="20"/>
 	</node>
 
-    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/launch/course_agv.rviz" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/launch/course_agv1.rviz" />
 </launch>
