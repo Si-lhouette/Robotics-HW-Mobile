@@ -1,0 +1,10 @@
+<launch>
+
+	<node pkg="course_agv_slam_task" type="extraction" name="extraction" output="screen" >
+		<param name="range_threshold" value=""/>
+		<param name="radius_max_th" value=""/>
+		<param name="landMark_min_pt" value=""/>
+	</node>
+
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/launch/course_agv.rviz" />
+</launch>
