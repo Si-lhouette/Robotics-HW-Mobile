@@ -233,18 +233,20 @@ NeighBor icp_lm::findNearest(const Eigen::MatrixXd &src, const Eigen::MatrixXd &
     vector<float> dist;
     vector<int> src_ind, tar_ind;
     NeighBor res;
-    MatrixXd src_coord(2, src.cols()), tar_coord(2, tar.cols()), temp_coord(2, tar.cols());
+    MatrixXd src_pos(2, src.cols());
+    MatrixXd tar_pos(2, tar.cols());
+    MatrixXd temp_pos(2, tar.cols());
     VectorXd distance(tar.cols());
     VectorXd::Index minInd;
     double minNum;
 
-    src_coord = src.topRows(2);
-    tar_coord = tar.topRows(2);
+    src_pos = src.topRows(2);
+    tar_pos = tar.topRows(2);
 
-    for(int i = 0; i < src_coord.cols(); i++){
-        temp_coord = tar_coord;
-        temp_coord.colwise() -= src_coord.col(i);
-        distance = temp_coord.array().square().colwise().sum();
+    for(int i = 0; i < src_pos.cols(); i++){
+        temp_pos = tar_pos;
+        temp_pos.colwise() -= src_pos.col(i);
+        distance = temp_pos.array().square().colwise().sum();
         minNum = distance.minCoeff(&minInd);
 
         if(minNum >= dis_th)
