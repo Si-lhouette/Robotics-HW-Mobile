@@ -227,6 +227,7 @@ void icp::process(sensor_msgs::LaserScan input)
     Eigen::Vector2d T_all;
     T_all << 0.0,0.0;//T_all << 0.0,0.0,0.0; To my surprise the bug didin't crash!! i suffered from it
     
+    double e = 1000;
     double elast = 1000; //error of last time 
 
 
@@ -242,12 +243,18 @@ void icp::process(sensor_msgs::LaserScan input)
     // 4. Main LOOP for Match
     for(int i=0; i<max_iter; i++)
     {   
-        //cout<<"loop_"<<i<<endl;
+        cout<<"loop_"<<i<<endl;
 
         //4.1. Find neareast correspond
         NeighBor s_t_near;
         s_t_near = findNearest(kdtreeLast.makeShared(), src_pc);
-		int s_num = s_t_near.src_indices.size();
+        int s_num = s_t_near.src_indices.size();
+        // e = accumulate(s_t_near.sqared_dis.begin(), s_t_near.sqared_dis.end(), 0.0) / s_num;
+        // cout<<"e1:"<<e<<endl;
+        // if(e>0.002){
+        // 	return;
+        // }
+		
         
         MatrixXd tar_pcn;
         MatrixXd src_pcn;
@@ -275,8 +282,8 @@ void icp::process(sensor_msgs::LaserScan input)
 
 
         //4.4. Cheak error tolerance
-        double e = accumulate(s_t_near.sqared_dis.begin(), s_t_near.sqared_dis.end(), 0.0) / s_num;
-        //cout<<"e:"<<e<<endl;
+        e = accumulate(s_t_near.sqared_dis.begin(), s_t_near.sqared_dis.end(), 0.0) / s_num;
+        cout<<"e2:"<<e<<endl;
         if(e < tolerance || fabs((elast - e)/elast) < 0.0001){
             //cout<<"loop_"<<i<<endl;
             cout<<"e:"<<e<<endl;
