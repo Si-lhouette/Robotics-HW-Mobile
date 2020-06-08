@@ -23,8 +23,8 @@ class AStarPlanner:
         self.rr = rr
         self.calc_obstacle_map(ox, oy)
         self.motion = self.get_motion_model()
-        self.g_w = 1;
-        self.h_w = 0.5;
+        self.g_w = 1
+        self.h_w = 0.5
  
     class Node:
         def __init__(self, x, y, g, f, pind):

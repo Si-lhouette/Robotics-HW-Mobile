@@ -6,8 +6,9 @@
             <collision name="collision">
                 <geometry>
                     <heightmap>
-                        <uri>model://ground_plane_for_agv/map/map.png</uri>
-                        <size>20 20 0.4</size>
+                        <uri>model://ground_plane_for_agv/map/map_pillar.png</uri>
+                        <!--<size>20 20 0.4</size-->
+                        <size>20 20 1.7</size>
                         <pos>0 0 0.01</pos>
                     </heightmap>
                 </geometry>
@@ -39,8 +40,8 @@
                             <min_height>4</min_height>
                             <fade_dist>5</fade_dist>
                         </blend>
-                        <uri>model://ground_plane_for_agv/map/map.png</uri>
-                        <size>20 20 0.8</size>
+                        <uri>model://ground_plane_for_agv/map/map_pillar.png</uri>
+                        <size>20 20 1.7</size>
                         <pos>0 0 0.01</pos>
                     </heightmap>
                 </geometry>

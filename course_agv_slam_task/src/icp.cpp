@@ -17,6 +17,7 @@
 #include "ros/subscriber.h"
 #include "nav_msgs/Odometry.h"
 #include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
 #include <sensor_msgs/LaserScan.h>
 
 
@@ -77,6 +78,8 @@ public:
     MatrixXd src_pc;
     // target point cloud matrix last frame
     MatrixXd tar_pc;
+
+    tf::TransformListener listener;
     
     //Wheel_v odometry
     void calcinitRT(Eigen::Matrix2d& R_all, Eigen::Vector2d& T_all);
@@ -110,6 +113,10 @@ public:
     void publishResult(Matrix3d T);
     tf::TransformBroadcaster odom_broadcaster;
     ros::Publisher odom_pub;
+
+    int pub_cnt = 0;
+    double dx_mean = 0;
+    double dy_mean = 0;
 };
 
 icp::~icp()
@@ -275,7 +282,7 @@ void icp::process(sensor_msgs::LaserScan input)
 
         //4.3. Updata R&T
         T_all = R_12 * T_all + T_12;
-        R_all = R_12 * R_all;
+        R_all = R_all * R_12;
         Transform_acc.block(0,0,2,2) = R_all;
         Transform_acc.block(0,2,2,1) = T_all;
         src_pc = Transform_acc*src_pc_copy;
@@ -469,6 +476,30 @@ void icp::publishResult(Eigen::Matrix3d T)
     odom.pose.pose.orientation = odom_quat;
 
     odom_pub.publish(odom);
+
+
+    //tf error calculate
+    tf::StampedTransform transform;
+
+    try{
+		listener.lookupTransform("world_base", "robot_base", ros::Time(0), transform);
+    }
+    catch (tf::TransformException &ex) {
+		ROS_ERROR("%s",ex.what());
+		cout<<"Don't Get"<<endl;
+		ros::Duration(1.0).sleep();
+    }
+    double rel_x = transform.getOrigin().x();
+    double rel_y = transform.getOrigin().y();
+
+    double dx = fabs(rel_x - sensor_sta(0));
+    double dy = fabs(rel_y - sensor_sta(1));
+    cout<<"delta: "<<dx<<", "<<dy<<endl;
+    dx_mean = (dx_mean * pub_cnt + dx)/(pub_cnt+1);
+    dy_mean = (dy_mean * pub_cnt + dy)/(pub_cnt+1);
+    cout<<"delta_mean: "<<dx_mean<<", "<<dy_mean<<endl;
+
+    pub_cnt++;
 }
 
 int main(int argc, char **argv)

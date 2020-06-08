@@ -1,0 +1,17 @@
+<launch>
+
+	<node pkg="course_agv_slam_task" type="ekf" name="ekf" output="screen">
+		
+		<!--from a rosbag-->
+		<param name="robot_x" value="0"/>
+		<param name="robot_y" value="0"/>
+		<param name="robot_theta" value="0"/>
+
+		<param name="match_th" value="2"/>
+		<param name="landMark_num" value="120"/>
+		<param name="noise_motion" value="0.2"/>
+		<param name="noise_measure" value="0.05"/>
+		<param name="mode" value="0"/>
+	</node>
+
+</launch>

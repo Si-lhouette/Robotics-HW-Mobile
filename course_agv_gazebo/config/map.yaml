@@ -1,4 +1,4 @@
-image: map/map.png
+image: map/map_pillar.png
 resolution: 0.155
 origin: [-10.0, -10.0, 0.0]
 occupied_thresh: 0.65

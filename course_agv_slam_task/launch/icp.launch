@@ -7,7 +7,7 @@
 		<param name="robot_y" value="0"/>
 		<param name="robot_theta" value="0"/>
 
-		<param name="max_iter" value="150"/>
+		<param name="max_iter" value="160"/>
 		<param name="tolerance" value="0.000001"/>
 		<param name="dis_th" value="0.1"/>
 

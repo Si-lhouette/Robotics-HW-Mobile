@@ -1,9 +1,21 @@
 <launch>
 
+	<!-- Start Simulator -->
+	<!-- include the control part -->
+	<include file="$(find course_agv_gazebo)/launch/course_agv_world.launch"/>
+	
+	<!-- Run the map server -->
+	<arg name="map_file" default="$(find course_agv_gazebo)/config/map.yaml"/>
+	<node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)"/>
 
-  
-  <include file="$(find course_agv_slam_task)/launch/extraction.launch"></include>
-  <include file="$(find course_agv_slam_task)/launch/icp_lm.launch"></include>
+	<!-- Start EKF-SLAM , get ekf-tf -->
+	<include file="$(find course_agv_slam_task)/launch/extraction.launch"></include>
+	<include file="$(find course_agv_slam_task)/launch/icp_lm.launch"></include>
+<!-- 	<include file="$(find course_agv_slam_task)/launch/ekf.launch"></include> -->
+
+	<!-- Run rviz -->
+	<node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_nav)/launch/nav.rviz"/>
+
 
 
 </launch>

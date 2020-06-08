@@ -56,12 +56,7 @@ ${PCL_LIBRARIES}
 ${OpenCV_LIBS}
 )
 
-add_executable(myicp src/myicp.cpp)
-target_link_libraries(myicp 
-${catkin_LIBRARIES}
-${PCL_LIBRARIES} 
-${OpenCV_LIBS}
-)
+
 
 add_executable(extraction src/extraction.cpp)
 target_link_libraries(extraction
@@ -73,4 +68,20 @@ add_executable(icp_lm src/icp_lm.cpp)
 target_link_libraries(icp_lm
 ${catkin_LIBRARIES}
 ${PCL_LIBRARIES} 
+)
+
+add_executable(ekf src/ekf.cpp)
+target_link_libraries(ekf
+${catkin_LIBRARIES}
+${PCL_LIBRARIES} 
+)
+
+add_executable(mapping src/mapping.cpp)
+target_link_libraries(mapping
+${catkin_LIBRARIES}
+)
+
+add_executable(particle_filter src/particle_filter.cpp)
+target_link_libraries(particle_filter
+${catkin_LIBRARIES}
 )

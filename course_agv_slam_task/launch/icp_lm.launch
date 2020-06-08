@@ -2,16 +2,29 @@
 
 	<node pkg="course_agv_slam_task" type="icp_lm" name="icp_lm" output="screen">
 		
-		<!--from a rosbag-->
-		<param name="robot_x" value="0"/>
+		<!--for a rosbag-->
+<!-- 		<param name="robot_x" value="0"/>
 		<param name="robot_y" value="0"/>
 		<param name="robot_theta" value="0"/>
 
 		<param name="max_iter" value="30"/>
 		<param name="tolerance" value="0.01"/>
-		<param name="dis_th" value="0.3"/>
+		<param name="dis_th" value="1"/>
 
-		<param name="min_match" value="5"/>
+		<param name="min_match" value="3"/>
+		<param name="jump_switch" value="1"/> -->
+
+		<!-- for gazebo -->
+		<param name="robot_x" value="0"/>
+		<param name="robot_y" value="0"/>
+		<param name="robot_theta" value="0"/>
+
+		<param name="max_iter" value="30"/>
+		<param name="tolerance" value="0.0001"/>
+		<param name="dis_th" value="0.5"/>
+
+		<param name="min_match" value="3"/>
+		<param name="jump_switch" value="1"/>
 	</node>
 
 </launch>

@@ -75,14 +75,14 @@
 
     <!-- hokuyo -->
     <gazebo reference="course_agv__hokuyo__link">
-        <sensor type="ray" name="head_hokuyo_sensor">
+        <sensor type="gpu_ray" name="head_hokuyo_sensor">
             <pose>0 0 0 0 0 0</pose>
             <visualize>true</visualize>
-            <update_rate>3</update_rate>
+            <update_rate>10</update_rate>
             <ray>
                 <scan>
                     <horizontal>
-                        <samples>30</samples>
+                        <samples>800</samples>
                         <resolution>1</resolution>
                         <min_angle>-3.14159</min_angle>
                         <max_angle>3.14159</max_angle>
@@ -90,8 +90,8 @@
                 </scan>
                 <range>
                     <min>0.10</min>
-                    <max>5.0</max>
-                    <resolution>0.01</resolution>
+                    <max>15.0</max>
+                    <resolution>0.1</resolution>
                 </range>
                 <noise>
                     <type>gaussian</type>
@@ -103,7 +103,7 @@
                     <stddev>0.01</stddev>
                 </noise>
             </ray>
-            <plugin name="gazebo_ros_head_hokuyo_controller" filename="libgazebo_ros_laser.so">
+            <plugin name="gazebo_ros_head_hokuyo_controller" filename="libgazebo_ros_gpu_laser.so">
                 <topicName>/course_agv/laser/scan</topicName>
                 <frameName>course_agv__hokuyo__link</frameName>
             </plugin>
@@ -122,7 +122,7 @@
             <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
                 <topicName>/course_agv/imu</topicName>
                 <bodyName>imu_link</bodyName>
-                <updateRateHZ>10.0</updateRateHZ>
+                <updateRateHZ>1.0</updateRateHZ>
                 <gaussianNoise>0.0</gaussianNoise>
                 <xyzOffset>0 0 0</xyzOffset>
                 <rpyOffset>0 0 0</rpyOffset>
