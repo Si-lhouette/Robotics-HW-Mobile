@@ -13,6 +13,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Odometry.h>
 #include <tf/transform_broadcaster.h>
+#include <gazebo_msgs/LinkStates.h>
 
 #include <visualization_msgs/MarkerArray.h>
 #include "std_msgs/Float64.h"
@@ -54,6 +55,7 @@ public:
     ros::Subscriber laser_sub;
     ros::Subscriber odom_sub;
     ros::Subscriber map_sub;
+    ros::Subscriber real_pos_sub;
     ros::Publisher particles_pub;
     ros::Publisher odom_pub;
     ros::Publisher odom_pub_tf;
@@ -84,9 +86,12 @@ public:
     int propag_range = 5;
     double sensor_range = 10;
 
-    double cnt=0;
-    double dx_mean = 0;
-    double dy_mean = 0;
+    //real pose
+    double real_x = 0.0;
+    double real_y = 0.0;
+    double cnt = 0.0;
+    double dx_mean = 0.0;
+    double dy_mean = 0.0;
 
     //mutex
     int motion_cnt = 0;
@@ -97,6 +102,8 @@ public:
     void PubLikeliMap();
     void genLikelihoodFeild(nav_msgs::OccupancyGrid input);
     double getPGaussian(double dx, double dy);
+    //sub real pose
+    void realPoseCallback(gazebo_msgs::LinkStates);
     // init the state and particles 
     void init();
     // do Motion from ICP odom
@@ -147,6 +154,15 @@ particle_filter::particle_filter(ros::NodeHandle& n):
     odom_sub = n.subscribe("/icp_odom", 1, &particle_filter::doMotion, this);
     odom_pub_tf = n.advertise<geometry_msgs::Pose>("pf_odom_tf", 1);
     error_pub = n.advertise<std_msgs::Float64>("particle_error", 1);
+    real_pos_sub = n.subscribe("/gazebo/link_states", 1, &particle_filter::realPoseCallback, this);
+}
+
+void particle_filter::realPoseCallback(gazebo_msgs::LinkStates link){
+    string link_name = "course_agv::robot_base";
+    if(link.name[1].compare(link_name) == 0){
+        this->real_x = link.pose[1].position.x;
+        this->real_y = link.pose[1].position.y;
+    }
 }
 
 void particle_filter::setMap(nav_msgs::OccupancyGrid input)
@@ -443,21 +459,9 @@ void particle_filter::getFinalPose()
     }
     // state(2) = angleNorm(state(2));
     // cout<<"finalstate:"<<state.transpose()<<endl;
-    tf::StampedTransform transform;
 
-    try{
-		listener.lookupTransform("map", "robot_base", ros::Time(0), transform);
-    }
-    catch (tf::TransformException &ex) {
-		ROS_ERROR("%s",ex.what());
-		cout<<"Don't Get"<<endl;
-		ros::Duration(1.0).sleep();
-    }
-    double rel_x = transform.getOrigin().x();
-    double rel_y = transform.getOrigin().y();
-
-    double dx = fabs(rel_x - state(0));
-    double dy = fabs(rel_y - state(1));
+    double dx = fabs(real_x - state(0));
+    double dy = fabs(real_y - state(1));
 
     cnt++;
     dx_mean = (dx_mean * cnt + dx)/cnt;
@@ -465,7 +469,8 @@ void particle_filter::getFinalPose()
 
     std_msgs::Float64 err;
     err.data = sqrt(dx*dx+dy*dy);
-    cout<<"Mean_err: "<<sqrt(dx_mean*dx_mean+dy_mean*dy_mean)<<endl;
+    cout<<"current_error: "<<err.data<<endl;
+    //cout<<"Mean_err: "<<sqrt(dx_mean*dx_mean+dy_mean*dy_mean)<<endl;
     error_pub.publish(err);
 }
 
@@ -474,8 +479,10 @@ particle particle_filter::genNewParticle()
     // TODO: Generate New Particle
     // Define random generator with Gaussian distribution
     const double mean = 0.0;//均值
-    const double stdxy = 1;//标准差
-    const double stdt = 0.1;//标准差
+    // const double stdxy = 1;//标准差
+    // const double stdt = 0.1;//标准差
+    const double stdxy = 3;//标准差
+    const double stdt = 0.3;//标准差
 
     unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine generator(seed);
@@ -486,10 +493,10 @@ particle particle_filter::genNewParticle()
     particle newp;
     newp.x = state(0) + noisexy(generator);
     newp.y = state(1) + noisexy(generator);
-    while(newp.x > 9.0 || newp.x < -9.0){
+    while(newp.x > 8.0 || newp.x < -8.0){
         newp.x = state(0) + noisexy(generator);
     }
-    while(newp.y > 9.0 || newp.y < -9.0){
+    while(newp.y > 8.0 || newp.y < -8.0){
         newp.y = state(1) + noisexy(generator);
     }
     newp.theta = state(2) + noiset(generator);

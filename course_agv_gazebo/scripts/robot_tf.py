@@ -29,7 +29,7 @@ class GazeboLinkPose:
             "/pf_odom_tf", Pose, self.pfcallback,tcp_nodelay=True)
         self.isFirst = 1
         self.isekfmode = 0
-        self.ispfmode = 0
+        self.ispfmode = 1
         print("isekf",self.isekfmode)
 
 

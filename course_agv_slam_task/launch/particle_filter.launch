@@ -13,8 +13,8 @@
 	<node pkg="course_agv_slam_task" type="particle_filter" name="particle_filter" output="screen">
 		
 		<!--from a rosbag-->
-        <param name="init_x" value="0.0"/>
-        <param name="init_y" value="0.0"/>
+        <param name="init_x" value="-6.0"/>
+        <param name="init_y" value="6.0"/>
         <param name="init_theta" value="0.0"/>
 
         <param name="init_rand_xy" value="0.5"/>
@@ -24,8 +24,10 @@
         <param name="propag_range" value="3"/>     
 
         <param name="new_ratio" value="0.1"/>
-        <param name="N_thres" value="8900"/>   
+        <!-- <param name="N_thres" value="8900"/>    -->
+        <param name="N_thres" value="9500"/>   
+
 	</node>
 
-    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/rviz/pf.rviz" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/rviz/one_for_all.rviz" />
 </launch>
