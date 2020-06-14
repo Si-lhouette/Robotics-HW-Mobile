@@ -3,5 +3,8 @@
         "/home/michael/workspace/Robotics/gitws/devel/lib/python2.7/dist-packages",
         "/home/michael/gsn/devel/lib/python2.7/dist-packages",
         "/opt/ros/kinetic/lib/python2.7/dist-packages"
-    ]
+    ],
+    "files.associations": {
+        "iosfwd": "cpp"
+    }
 }

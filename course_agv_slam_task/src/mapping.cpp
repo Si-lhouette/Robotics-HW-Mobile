@@ -14,6 +14,7 @@
 #include <tf/transform_listener.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include "std_msgs/Float64.h"
+#include <nav_msgs/Odometry.h>
 
 using namespace std;
 using namespace Eigen;
@@ -26,6 +27,7 @@ public:
     ros::NodeHandle& n;
 
     // subers & pubers
+    ros::Subscriber pf_odom_sub;
     ros::Subscriber laser_sub;
     ros::Publisher map_pub;
     ros::Publisher err_map_pub;
@@ -57,9 +59,13 @@ public:
 
     // grid points location
     MatrixXd grid_points;
+
+    //laser save
+    sensor_msgs::LaserScan laserScan;
     
     // main process
-    void process(sensor_msgs::LaserScan input);
+    void laserCallback(sensor_msgs::LaserScan input);
+    void process(nav_msgs::Odometry odom);
     double angleNorm(double angle);
     double inverseSensorModel(Vector2d rgrid, Vector2d roboPose, double range);
     void subMapSever(nav_msgs::OccupancyGrid origin_map);
@@ -131,8 +137,13 @@ mapping::mapping(ros::NodeHandle& n):
     err_map_pub = n.advertise<nav_msgs::OccupancyGrid>("err_map_mine", 1);
     error_pub = n.advertise<std_msgs::Float64>("map_error", 1);
 
+    pf_odom_sub = n.subscribe("pf_odom", 1, &mapping::process, this);
     map_sub = n.subscribe("/map",1,&mapping::subMapSever, this);
-    laser_sub = n.subscribe("/course_agv/laser/scan", 1, &mapping::process, this);
+    laser_sub = n.subscribe("/course_agv/laser/scan", 1, &mapping::laserCallback, this);
+}
+
+void mapping::laserCallback(sensor_msgs::LaserScan input){
+    this->laserScan = input;
 }
 
 void mapping::subMapSever(nav_msgs::OccupancyGrid map){
@@ -168,10 +179,14 @@ double mapping::CalMapDiff(){
     return (err_num*1.0)/(all_num*1.0);
 }
 
-void mapping::process(sensor_msgs::LaserScan input)
+void mapping::process(nav_msgs::Odometry odom)
 {
-    cout<<endl<<"------seq:  "<<input.header.seq<<endl;
-    int laser_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
+    cout<<endl<<"------seq:  "<<laserScan.header.seq<<endl;
+    //mapping signal: odom.pose.pose.position.z = 1.0
+    if(odom.pose.pose.position.z < 1.0){
+        return;
+    }
+    int laser_num = (laserScan.angle_max - laserScan.angle_min) / laserScan.angle_increment + 1;
     //cout<<"laser_num:"<<laser_num<<endl;
     //cout<<"anglemaxmin:"<<input.angle_max<<", "<<input.angle_min<<endl;
 
@@ -227,14 +242,14 @@ void mapping::process(sensor_msgs::LaserScan input)
             rgrid = R.inverse()*(tgrid - roboPose); //将全局坐标系下的栅格位置转换到局部坐标系下
             double rangle = angleNorm(std::atan2(rgrid(1), rgrid(0)));
             // cout<<"rangle:"<<rangle<<endl;
-            int inx = rangle /input.angle_increment + laser_num/2;
+            int inx = rangle /laserScan.angle_increment + laser_num/2;
             // cout<<"inx:"<<inx<<endl;
 
             
-            if(input.ranges[inx] > input.ranges[inx+1]){
+            if(laserScan.ranges[inx] > laserScan.ranges[inx+1]){
                 inx++;
             }
-            range = input.ranges[inx]+0.1;
+            range = laserScan.ranges[inx]+0.1;
             // cout<<"range:"<<range<<endl;
 
             // 2.2 计算栅格占用概率

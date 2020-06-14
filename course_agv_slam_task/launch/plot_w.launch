@@ -1,0 +1,4 @@
+<launch>
+
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/rviz/one_for_all.rviz" />
+</launch>

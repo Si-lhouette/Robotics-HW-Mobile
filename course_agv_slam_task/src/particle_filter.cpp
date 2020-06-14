@@ -25,11 +25,23 @@
 
 #include <geometry_msgs/Pose.h>
 #include <ros/duration.h>
+#include <numeric>
 
 using namespace std;
 using namespace Eigen;
 
 #define particle_num 500
+
+ostream& operator << (ostream &output, vector<double> &v) {
+    for (auto i = v.begin(); i < v.end(); i++) {
+        output << *i;
+        if (i < v.end() - 1)
+            output << " ";
+    }
+    return output;
+}
+
+
 typedef struct particle {
     int id;
     float x;
@@ -98,6 +110,8 @@ public:
     int motion_cnt = 0;
     int observe_cnt = 0;
 
+    double w_diff;
+
     // set map
     void setMap(nav_msgs::OccupancyGrid input);
     void PubLikeliMap();
@@ -118,6 +132,8 @@ public:
     double angleNorm(double angle);
     // weight normalization
     double weightNorm();
+    //Calculate the information entropy of particles
+    double calEntropy();
     // re-sample the particle according to the weights
     void resampling();
     // get the final pose 
@@ -185,7 +201,6 @@ void particle_filter::setMap(nav_msgs::OccupancyGrid input)
 }
 
 void particle_filter::genLikelihoodFeild(nav_msgs::OccupancyGrid input){
-    
     for(int i = 0; i < map_height; i++){
         for(int j = 0; j < map_width; j++){
             if(input.data[j*input.info.width+i] != 0){
@@ -255,6 +270,7 @@ void particle_filter::PubLikeliMap(){
         }
     }
     likeli_map_pub.publish(grid_map);
+    cout<<"likeli_map_pub"<<endl;
 }
 
 
@@ -365,6 +381,12 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
         Cal_weight(input);
         weightNorm();
     }
+
+
+
+    double H = calEntropy();
+    cout<<"Entropy: "<<H<<endl;
+    w_diff = H;
     
     getFinalPose();
     publishAll();
@@ -518,6 +540,33 @@ double particle_filter::weightNorm(){
     return weight_sum;
 }
 
+double particle_filter::calEntropy(){
+    double H = 0.0;
+    // for(int i=0; i<particle_num; i++){
+    //     double w = particles[i].weight;
+    //     H += -w*log2(w);
+    // }
+    vector<double> w_step;
+    for(int i=0; i<particle_num; i++){
+        w_step.push_back(particles[i].weight);
+    }
+    sort(w_step.begin(), w_step.end());
+
+    vector<double> w_max;
+    vector<double> w_min;
+    double w_num = 10;
+    for(int i = 0; i < int(w_num); i++){
+        w_min.push_back(w_step[i]);
+        w_max.push_back(w_step[w_step.size()-i-1]);
+    }
+    double w_max_mean = accumulate(w_max.begin(), w_max.end(),0.0);
+    double w_min_mean = accumulate(w_min.begin(), w_min.end(),0.0);
+
+    H = w_max_mean - w_min_mean;
+        
+    return H*100.0;
+}
+
 double particle_filter::angleNorm(double angle)
 {
     // -180 ~ 180
@@ -582,6 +631,9 @@ void particle_filter::publishAll()
     odom.pose.pose.position.x = state(0);
     odom.pose.pose.position.y = state(1);
     odom.pose.pose.position.z = 0.0;
+    if(w_diff < 2.5){
+        odom.pose.pose.position.z = 1.0;
+    }
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(state(2));
     odom.pose.pose.orientation = odom_quat;
 
@@ -598,11 +650,14 @@ void particle_filter::publishAll()
 
 }
 
+
+
+
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "particle_filter");
     ros::NodeHandle n;
-    ros::Duration(1).sleep();
+    ros::Duration(2.0).sleep();
 
     particle_filter particle_filter_(n);
 
