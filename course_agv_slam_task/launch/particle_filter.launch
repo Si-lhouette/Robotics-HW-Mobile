@@ -13,8 +13,8 @@
 	<node pkg="course_agv_slam_task" type="particle_filter" name="particle_filter" output="screen">
 		
 		<!--from a rosbag-->
-        <param name="init_x" value="-6.0"/>
-        <param name="init_y" value="6.0"/>
+        <param name="init_x" value="-3.0"/>
+        <param name="init_y" value="-6.0"/>
         <param name="init_theta" value="0.0"/>
 
         <param name="init_rand_xy" value="0.5"/>

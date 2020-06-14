@@ -24,6 +24,7 @@
 #include <ctime>
 
 #include <geometry_msgs/Pose.h>
+#include <ros/duration.h>
 
 using namespace std;
 using namespace Eigen;
@@ -277,6 +278,7 @@ void particle_filter::init()
         particles[i].theta = init_theta + (float(rand()) / float(RAND_MAX)) * 2 * init_rand_theta - init_rand_theta;
         particles[i].weight = float(1/float(particle_num)); // same weight
     }
+    cout<<"PF INIT DONE"<<endl;
 }
 
 
@@ -600,6 +602,7 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "particle_filter");
     ros::NodeHandle n;
+    ros::Duration(1).sleep();
 
     particle_filter particle_filter_(n);
 
