@@ -32,17 +32,17 @@ class Config:
     """
     def __init__(self):
         # robot parameter
-        self.max_speed = 0.8  # [m/s]
-        self.min_speed = -0.5  # [m/s]
-        self.max_yawrate = 100.0 * math.pi / 180.0  # [rad/s]
-        self.max_accel = 1.0  # [m/ss]
-        self.max_dyawrate = 100.0 * math.pi / 180.0  # [rad/ss]
+        self.max_speed = 0.4  # [m/s]
+        self.min_speed = -0.25  # [m/s]
+        self.max_yawrate = 0.8 #100.0 * math.pi / 180.0  # [rad/s]
+        self.max_accel = 0.5  # [m/ss]
+        self.max_dyawrate = 50.0 * math.pi / 180.0  # [rad/ss]
         self.dt = 0.1  # [s] Time tick for motion prediction
         self.v_reso = self.max_accel*self.dt/10.0  # [m/s]
         self.yawrate_reso = self.max_dyawrate*self.dt/10.0  # [rad/s]
         self.predict_time = 2  # [s]
         self.to_goal_cost_gain = 1.0
-        self.speed_cost_gain = 1.0 * 4.7
+        self.speed_cost_gain = 2.0 * 4.7
         self.obstacle_cost_gain = 1.0 *0.5
         self.robot_type = RobotType.rectangle
 

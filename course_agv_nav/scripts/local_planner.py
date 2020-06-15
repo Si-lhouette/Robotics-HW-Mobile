@@ -47,7 +47,7 @@ class LocalPlanner:
 
         self.flag = True
         self.dwa_cnt = 0
-        self.dwa_maxtime = 50
+        self.dwa_maxtime = 60
         self.exit_flag = True
         self.replan_client = rospy.ServiceProxy('/course_agv/global_plan',Plan)
 

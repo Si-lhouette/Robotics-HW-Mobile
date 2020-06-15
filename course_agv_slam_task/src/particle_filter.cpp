@@ -30,7 +30,7 @@
 using namespace std;
 using namespace Eigen;
 
-#define particle_num 500
+#define particle_num 800
 
 ostream& operator << (ostream &output, vector<double> &v) {
     for (auto i = v.begin(); i < v.end(); i++) {
@@ -102,9 +102,12 @@ public:
     //real pose
     double real_x = 0.0;
     double real_y = 0.0;
+    double real_th = 0.0;
     double cnt = 0.0;
     double dx_mean = 0.0;
     double dy_mean = 0.0;
+
+    double p_max_w;
 
     //mutex
     int motion_cnt = 0;
@@ -126,6 +129,7 @@ public:
     // do Observation to weight each particle
     void doObservation(sensor_msgs::LaserScan input);
     void Cal_weight(sensor_msgs::LaserScan input);
+    double Cal_realpose_weight(sensor_msgs::LaserScan input);
     // publish the particles and the estimated state
     void publishAll();
     // angle normalization
@@ -179,6 +183,7 @@ void particle_filter::realPoseCallback(gazebo_msgs::LinkStates link){
     if(link.name[1].compare(link_name) == 0){
         this->real_x = link.pose[1].position.x;
         this->real_y = link.pose[1].position.y;
+        this->real_th = tf::getYaw(link.pose[1].orientation);
     }
 }
 
@@ -224,9 +229,9 @@ void particle_filter::genLikelihoodFeild(nav_msgs::OccupancyGrid input){
                             continue;
                         }
                         likeli_map(m,n) = max(getPGaussian((m-i)*map_res, (n-j)*map_res), likeli_map(m,n));
-                        // if(abs(m-i)+abs(n-j) == 1){
-                        //     likeli_map(m,n) = 1.0;
-                        // }
+                        if(abs(m-i)+abs(n-j) == 1){
+                            likeli_map(m,n) = 1.0;
+                        }
                     }
                 }
             }
@@ -382,7 +387,8 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
         weightNorm();
     }
 
-
+    double realpose_w = Cal_realpose_weight(input);
+    cout<<"p_max_w: "<<p_max_w<<"realw: "<<realpose_w<<endl;
 
     double H = calEntropy();
     cout<<"Entropy: "<<H<<endl;
@@ -396,6 +402,7 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
 
 void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
     int laser_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
+    p_max_w = 0;
 
     /* 计算每个粒子权重 */
     for(int i=0; i<particle_num; i++){
@@ -427,8 +434,45 @@ void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
             while(1){}
         }
         particles[i].weight = p_avg;
+        if(p_max_w<p_avg){
+            p_max_w = p_avg;
+        }
         // cout<<"p_avg:"<<p_avg<<"| weight:"<<particles[i].weight<<endl<<endl;
     }
+}
+
+double particle_filter::Cal_realpose_weight(sensor_msgs::LaserScan input){
+    int laser_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
+
+
+    double p_all = 0.0;
+    int laser_cnt = 0;
+    // cout<<"-------------------------------------PARTICLE "<<i<<endl;
+    for(int k = 0; k < laser_num; k++){
+        if(input.ranges[k] >= sensor_range){
+            continue;
+        }
+        Vector2d g_laser;
+        double r_angle = input.angle_min + k*input.angle_increment;
+        g_laser(0) = real_x + input.ranges[k]*cos(real_th+r_angle) + 10.0;
+        g_laser(1) = real_y + input.ranges[k]*sin(real_th+r_angle) + 10.0;
+        if(g_laser(0)<0||g_laser(1)<0||g_laser(0)>20||g_laser(1)>20)
+            continue;
+
+        p_all += likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res));
+        // cout<<"li:"<<likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res))<<endl;
+        // cout<<"lixy:" << int(g_laser(0)/map_res) << "," << int(g_laser(1)/map_res) <<endl;
+        laser_cnt++;
+    }
+    // cout<<"pall:"<<p_all<<endl;
+    double p_avg = p_all/(1.0*laser_cnt);
+    if(laser_cnt == 0){
+        p_avg = 0;
+    }
+    if(p_avg>10000){
+        while(1){}
+    }
+    return p_avg;
 }
 
 void particle_filter::resampling()
@@ -505,8 +549,8 @@ particle particle_filter::genNewParticle()
     const double mean = 0.0;//均值
     // const double stdxy = 1;//标准差
     // const double stdt = 0.1;//标准差
-    const double stdxy = 3;//标准差
-    const double stdt = 0.3;//标准差
+    const double stdxy = 2;//标准差
+    const double stdt = 0.1;//标准差
 
     unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine generator(seed);
@@ -631,7 +675,7 @@ void particle_filter::publishAll()
     odom.pose.pose.position.x = state(0);
     odom.pose.pose.position.y = state(1);
     odom.pose.pose.position.z = 0.0;
-    if(w_diff < 2.5){
+    if(w_diff < 1.4){
         odom.pose.pose.position.z = 1.0;
     }
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(state(2));
