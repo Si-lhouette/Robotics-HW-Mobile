@@ -69,6 +69,7 @@ class GazeboLinkPose:
             if self.isFirst:
                 print("----------GET PF----------")
                 self.isFirst = 0
+                self.link_pose = data
         else:
             pass       
 

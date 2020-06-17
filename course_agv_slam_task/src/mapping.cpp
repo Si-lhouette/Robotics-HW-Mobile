@@ -60,6 +60,7 @@ public:
     // grid points location
     MatrixXd grid_points;
 
+    bool firstMap = true;
     //laser save
     sensor_msgs::LaserScan laserScan;
     
@@ -182,6 +183,10 @@ double mapping::CalMapDiff(){
 void mapping::process(nav_msgs::Odometry odom)
 {
     cout<<endl<<"------seq:  "<<laserScan.header.seq<<endl;
+    if(firstMap){
+        firstMap = false;
+        return;
+    }
     //mapping signal: odom.pose.pose.position.z = 1.0
     if(odom.pose.pose.position.z < 1.0){
         return;

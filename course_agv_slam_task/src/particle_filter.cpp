@@ -417,9 +417,10 @@ void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
             double r_angle = input.angle_min + k*input.angle_increment;
             g_laser(0) = particles[i].x + input.ranges[k]*cos(particles[i].theta+r_angle) + 10.0;
             g_laser(1) = particles[i].y + input.ranges[k]*sin(particles[i].theta+r_angle) + 10.0;
-            if(g_laser(0)<0||g_laser(1)<0||g_laser(0)>20||g_laser(1)>20)
+            if(g_laser(0)<0||g_laser(1)<0||g_laser(0)>20||g_laser(1)>20){
+                laser_cnt++;
                 continue;
-
+            }
             p_all += likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res));
             // cout<<"li:"<<likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res))<<endl;
             // cout<<"lixy:" << int(g_laser(0)/map_res) << "," << int(g_laser(1)/map_res) <<endl;
@@ -456,9 +457,10 @@ double particle_filter::Cal_realpose_weight(sensor_msgs::LaserScan input){
         double r_angle = input.angle_min + k*input.angle_increment;
         g_laser(0) = real_x + input.ranges[k]*cos(real_th+r_angle) + 10.0;
         g_laser(1) = real_y + input.ranges[k]*sin(real_th+r_angle) + 10.0;
-        if(g_laser(0)<0||g_laser(1)<0||g_laser(0)>20||g_laser(1)>20)
+        if(g_laser(0)<0||g_laser(1)<0||g_laser(0)>20||g_laser(1)>20){
+            laser_cnt++;
             continue;
-
+        }
         p_all += likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res));
         // cout<<"li:"<<likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res))<<endl;
         // cout<<"lixy:" << int(g_laser(0)/map_res) << "," << int(g_laser(1)/map_res) <<endl;
