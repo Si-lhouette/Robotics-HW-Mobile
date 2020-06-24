@@ -403,6 +403,7 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
 void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
     int laser_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
     p_max_w = 0;
+    srand(time(0));
 
     /* 计算每个粒子权重 */
     for(int i=0; i<particle_num; i++){
@@ -413,6 +414,16 @@ void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
             if(input.ranges[k] >= sensor_range){
                 continue;
             }
+
+            double drop_rate=2*3.1415926/1000*input.ranges[k]/0.155;
+            double sample=rand()%10000/10000.0;
+
+            if (sample>drop_rate)
+            {
+                // cout<<"range "<<input.ranges[k]<<"drop_rate "<<drop_rate<<"sample "<<sample<<endl;
+                 continue;
+            }
+            
             Vector2d g_laser;
             double r_angle = input.angle_min + k*input.angle_increment;
             g_laser(0) = particles[i].x + input.ranges[k]*cos(particles[i].theta+r_angle) + 10.0;
