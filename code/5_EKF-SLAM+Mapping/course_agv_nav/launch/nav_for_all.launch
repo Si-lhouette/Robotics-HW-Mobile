@@ -1,0 +1,13 @@
+<launch>
+
+    <!-- Publish global pose -->
+    <node pkg="course_agv_gazebo" type="robot_tf.py" output="screen" name="robot_tf">
+    </node>
+
+<!--     <node pkg="course_agv_control" type="kinematics.py" name="kinematics_transform" ns="course_agv" output="screen"/> -->
+    <node pkg="course_agv_nav" type="global_planner.py" name="global_planner" output="screen" ns="course_agv"  />
+    <node pkg="course_agv_nav" type="local_planner.py" name="local_planner" output="screen" ns="course_agv" />
+
+
+
+</launch>

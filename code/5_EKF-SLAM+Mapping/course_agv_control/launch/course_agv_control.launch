@@ -1,0 +1,36 @@
+<launch>
+
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find course_agv_description)/urdf/course_agv.xacro'" />
+
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find course_agv_control)/config/course_agv_control.yaml" command="load"/>
+
+  <!-- load the controllers -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+	output="screen" ns="/course_agv" args="joint_state_controller
+					  left_wheel_velocity_controller
+					  right_wheel_velocity_controller"/>
+
+  <!-- convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+	respawn="false" output="screen">
+    <remap from="/joint_states" to="/course_agv/joint_states" />
+  
+  </node>
+
+
+<!-- <node pkg="robot_state_publisher" type="state_publisher" name="rob_st_pub" >
+ <remap from="robot_description" to="different_robot_description" />
+ <remap from="/joint_states" to="/course_agv/joint_states" />
+ </node> -->
+
+
+<!--   <node pkg="course_agv_control" type="keyboard_velocity.py" name="keyboard_velocity" output="screen" launch-prefix="xterm -e" /> -->
+
+<!--     <node name="rviz" pkg="rviz" type="rviz" args="-d $(find course_agv_description)/launch/course_agv.rviz"/> -->
+
+    <node pkg="course_agv_control" type="kinematics.py" name="kinematics_transform" ns="course_agv" output="screen"/>
+
+  <!-- <node pkg="course_agv_control" type="keyboard_velocity.py" name="keyboard_velocity" output="screen"/> -->
+
+</launch>

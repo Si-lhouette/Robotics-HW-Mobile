@@ -1,0 +1,15 @@
+<launch>
+
+
+
+	<!-- Start EKF-SLAM , get ekf-tf -->
+	<include file="$(find course_agv_slam_task)/launch/extraction.launch"></include>
+	<include file="$(find course_agv_slam_task)/launch/icp_lm.launch"></include>
+
+
+	<!-- Run rviz -->
+	<node pkg="rviz" type="rviz" name="rviz" args="-d $(find course_agv_slam_task)/launch/course_agv_ekf.rviz" />
+
+
+
+</launch>
