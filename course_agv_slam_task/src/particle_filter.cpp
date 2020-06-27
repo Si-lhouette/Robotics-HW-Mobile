@@ -32,6 +32,9 @@ using namespace Eigen;
 
 #define particle_num 800
 
+/**
+ * Function: 用于vector<double>类型的<<重载，便于输出
+ **/
 ostream& operator << (ostream &output, vector<double> &v) {
     for (auto i = v.begin(); i < v.end(); i++) {
         output << *i;
@@ -41,7 +44,9 @@ ostream& operator << (ostream &output, vector<double> &v) {
     return output;
 }
 
-
+/**
+ * Class: 粒子
+ **/
 typedef struct particle {
     int id;
     float x;
@@ -50,19 +55,14 @@ typedef struct particle {
     float weight;
 } particle;
 
+/**
+ * Class: 粒子滤波算法类
+ **/
 class particle_filter{
-
 public:
     particle_filter(ros::NodeHandle &n);
 	~particle_filter();
     ros::NodeHandle& n;
-
-    // some params
-    float init_x;
-    float init_y;
-    float init_theta;
-    float init_rand_xy;
-    float init_rand_theta;
 
     // subers & pubers
     ros::Subscriber laser_sub;
@@ -77,72 +77,82 @@ public:
     tf::TransformBroadcaster tf_broadcaster;
     tf::TransformListener listener;
 
+    // particle init params
+    float init_x;
+    float init_y;
+    float init_theta;
+    float init_rand_xy;
+    float init_rand_theta;
+
     // particles 
     particle particles[particle_num];
-    double new_ratio = 0.1;
-    double N_thres;
+    double new_ratio = 0.1;     //Resample时新生成粒子的比例
+    double N_thres;             //粒子方差的倒数Resample阈值
+    double w_diff;              //粒子中最大的10个权重和与最小的10个权重和的差值
 
     // global state
     Eigen::Vector3d state;
     double last_x = 0;
     double last_y = 0;
     double last_t = 0;
-    // map
-    nav_msgs::OccupancyGrid global_map;
+
+    //likelihood map
     bool isMapSet = false;
     int map_height, map_width;
     float map_res;
-
-    //likelihood map
     MatrixXd likeli_map;
-    double std_map = 0.02;
-    int propag_range = 5;
-    double sensor_range = 10;
+    double std_map;             //likelihood map生成时高斯的标准差(建议0.1)
+    int propag_range;           //likelihood map生成时高斯的传播格数(建议3)
+    double sensor_range = 10;   //激光雷达的最大扫描距离
 
     //real pose
+    //从gazebo获得真值用于计算误差
     double real_x = 0.0;
     double real_y = 0.0;
     double real_th = 0.0;
     double cnt = 0.0;
     double dx_mean = 0.0;
     double dy_mean = 0.0;
-
-    double p_max_w;
+    double p_max_w;             //当前粒子中的最大权重
 
     //mutex
+    //保证在motion后observation
     int motion_cnt = 0;
     int observe_cnt = 0;
 
-    double w_diff;
-
-    // set map
+    // 回调函数-初始化likelihood map似然地图信息
     void setMap(nav_msgs::OccupancyGrid input);
+    // Pub likelihood map似然地图
     void PubLikeliMap();
+    // 生成likelihood map似然地图，每格取值范围[0,1]
     void genLikelihoodFeild(nav_msgs::OccupancyGrid input);
+    // 生成高斯概率
     double getPGaussian(double dx, double dy);
-    //sub real pose
+    // 回调函数-接收gazebo机器人真实位姿
     void realPoseCallback(gazebo_msgs::LinkStates);
-    // init the state and particles 
+    // 初始化粒子群
     void init();
-    // do Motion from ICP odom
+    // 回调函数：粒子群运动更新
     void doMotion(nav_msgs::Odometry input);
-    // do Observation to weight each particle
+    // 回调函数：粒子群观测更新
     void doObservation(sensor_msgs::LaserScan input);
+    // 计算粒子权重
     void Cal_weight(sensor_msgs::LaserScan input);
+    // 计算在真实位置的粒子权重
     double Cal_realpose_weight(sensor_msgs::LaserScan input);
-    // publish the particles and the estimated state
+    // Pub 所有信息
     void publishAll();
-    // angle normalization
+    // 角度归一化
     double angleNorm(double angle);
-    // weight normalization
+    // 粒子权重归一化
     double weightNorm();
-    //Calculate the information entropy of particles
+    // 计算发送map_flag的指标值
     double calEntropy();
-    // re-sample the particle according to the weights
+    // 粒子重采样
     void resampling();
-    // get the final pose 
+    // 计算机器人估计位姿
     void getFinalPose();
-    // gen new particle 
+    // 生成新粒子 
     particle genNewParticle();
 };
 
@@ -178,6 +188,10 @@ particle_filter::particle_filter(ros::NodeHandle& n):
     real_pos_sub = n.subscribe("/gazebo/link_states", 1, &particle_filter::realPoseCallback, this);
 }
 
+/**
+ * Function: 回调函数-接收gazebo机器人真实位姿
+ * Input: link{gazeo发出的机器人位姿消息}
+ **/
 void particle_filter::realPoseCallback(gazebo_msgs::LinkStates link){
     string link_name = "course_agv::robot_base";
     if(link.name[1].compare(link_name) == 0){
@@ -187,13 +201,16 @@ void particle_filter::realPoseCallback(gazebo_msgs::LinkStates link){
     }
 }
 
+/**
+ * Function: 回调函数-初始化likelihood map似然地图信息
+ * Input: input{mapsevser发出的占用栅格地图}
+ **/
 void particle_filter::setMap(nav_msgs::OccupancyGrid input)
 {   
     // set once at first time
     if(!isMapSet)
     {   
         cout<<"init the global occupancy grid map"<<endl;
-        this->global_map = input;
         isMapSet = true;
 
         map_height = input.info.height;
@@ -205,6 +222,10 @@ void particle_filter::setMap(nav_msgs::OccupancyGrid input)
     }
 }
 
+/**
+ * Function: 生成likelihood map似然地图，每格取值范围[0,1]
+ * Input: input{mapsevser发出的占用栅格地图}
+ **/
 void particle_filter::genLikelihoodFeild(nav_msgs::OccupancyGrid input){
     for(int i = 0; i < map_height; i++){
         for(int j = 0; j < map_width; j++){
@@ -220,6 +241,7 @@ void particle_filter::genLikelihoodFeild(nav_msgs::OccupancyGrid input){
                         }
                     }
                 }
+                // 镂空效果：如果该格子周围8个格子中障碍物(data=100) >= 7个，放弃更新该格子
                 if(black_cnt>=7){
                     continue;
                 }
@@ -228,7 +250,9 @@ void particle_filter::genLikelihoodFeild(nav_msgs::OccupancyGrid input){
                         if(m<0 || n<0 || m>=map_height || n>=map_width){
                             continue;
                         }
+                        // 更新似然地图格子的概率：以当前格子为中心，以高斯概率向周围按照max规则传播
                         likeli_map(m,n) = max(getPGaussian((m-i)*map_res, (n-j)*map_res), likeli_map(m,n));
+                        // 障碍物外扩一格(可注释此部分)
                         if(abs(m-i)+abs(n-j) == 1){
                             likeli_map(m,n) = 1.0;
                         }
@@ -240,11 +264,19 @@ void particle_filter::genLikelihoodFeild(nav_msgs::OccupancyGrid input){
     PubLikeliMap();
 }
 
+/**
+ * Function: 生成高斯概率
+ * Input: dx{x方向map格子中心的距离差}，dy{y方向map格子中心的距离差}
+ * Output: 高斯概率(dx=dy=0时，结果=1)
+ **/
 double particle_filter::getPGaussian(double dx, double dy){
     double dis = sqrt(double(dx*dx+dy*dy));
     return exp(-0.5*dis*dis/std_map);
 }
 
+/**
+ * Function: Pub likelihood map似然地图
+ **/
 void particle_filter::PubLikeliMap(){
     nav_msgs::OccupancyGrid grid_map;
     // iniitialization
@@ -278,7 +310,9 @@ void particle_filter::PubLikeliMap(){
     cout<<"likeli_map_pub"<<endl;
 }
 
-
+/**
+ * Function: 初始化粒子群
+ **/
 void particle_filter::init()
 {   
     // set state
@@ -302,12 +336,13 @@ void particle_filter::init()
     cout<<"PF INIT DONE"<<endl;
 }
 
-
-
+/**
+ * Function: 回调函数：粒子群运动更新
+ * Input: odom{接收icp_lm里程计消息}
+ **/
 void particle_filter::doMotion(nav_msgs::Odometry odom)
 {   
-    // cout<<"-------------------------------------doing Motion"<<endl;
-    // TODO: Motion Model
+    cout<<"-------------------------------------doing Motion"<<endl;
     // Get icp_odom delta info
     double nowx = odom.pose.pose.position.x;
     double nowy = odom.pose.pose.position.y;
@@ -328,7 +363,6 @@ void particle_filter::doMotion(nav_msgs::Odometry odom)
     else if(dt<-M_PI){
         dt += 2*M_PI;
     }
-    // cout<<"dt:"<<dt<<endl;
 
     last_x = nowx;
     last_y = nowy;
@@ -359,13 +393,16 @@ void particle_filter::doMotion(nav_msgs::Odometry odom)
     motion_cnt++;
 }
 
+/**
+ * Function: 回调函数：粒子群观测更新
+ * Input: input{接收激光雷达消息}
+ **/
 void particle_filter::doObservation(sensor_msgs::LaserScan input)
 {   
     if(observe_cnt >= motion_cnt)
         return;
 
     cout<<endl<<"-----------------------------doing observation"<<endl;
-    // TODO: Measurement Model
 
     Cal_weight(input);
     weightNorm();
@@ -377,7 +414,7 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
     for(int i=0; i<particle_num; i++){
         w_sqsum += (particles[i].weight-w_mean)*(particles[i].weight-w_mean);
     }
-    Neff = 1/w_sqsum;
+    Neff = 1/w_sqsum;   // 粒子方差的倒数
     cout<<"Neff:"<<Neff<<endl;
 
     if(Neff < N_thres){
@@ -388,7 +425,7 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
     }
 
     double realpose_w = Cal_realpose_weight(input);
-    cout<<"p_max_w: "<<p_max_w<<"realw: "<<realpose_w<<endl;
+    cout<<"p_max_w: "<<p_max_w<<" realw: "<<realpose_w<<endl;   // 输出粒子中最大权重和真实位置权重用于debug
 
     double H = calEntropy();
     cout<<"Entropy: "<<H<<endl;
@@ -400,6 +437,10 @@ void particle_filter::doObservation(sensor_msgs::LaserScan input)
     observe_cnt++;
 }
 
+/**
+ * Function: 计算粒子权重
+ * Input: input{当前帧激光雷达消息}
+ **/
 void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
     int laser_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
     p_max_w = 0;
@@ -409,21 +450,20 @@ void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
     for(int i=0; i<particle_num; i++){
         double p_all = 0.0;
         int laser_cnt = 0;
-        // cout<<"-------------------------------------PARTICLE "<<i<<endl;
+
         for(int k = 0; k < laser_num; k++){
             if(input.ranges[k] >= sensor_range){
                 continue;
             }
 
+            // 随机丢弃激光点，丢弃概率与距离成反比，防止近处粒子对粒子权重影响过大
             double drop_rate=2*3.1415926/1000*input.ranges[k]/0.155;
             double sample=rand()%10000/10000.0;
-
-            if (sample>drop_rate)
-            {
-                // cout<<"range "<<input.ranges[k]<<"drop_rate "<<drop_rate<<"sample "<<sample<<endl;
+            if (sample>drop_rate){
                  continue;
             }
             
+            // 将激光点转换到全局坐标系下，通过似然地图获取其权重
             Vector2d g_laser;
             double r_angle = input.angle_min + k*input.angle_increment;
             g_laser(0) = particles[i].x + input.ranges[k]*cos(particles[i].theta+r_angle) + 10.0;
@@ -433,33 +473,33 @@ void particle_filter::Cal_weight(sensor_msgs::LaserScan input){
                 continue;
             }
             p_all += likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res));
-            // cout<<"li:"<<likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res))<<endl;
-            // cout<<"lixy:" << int(g_laser(0)/map_res) << "," << int(g_laser(1)/map_res) <<endl;
             laser_cnt++;
         }
-        // cout<<"pall:"<<p_all<<endl;
         double p_avg = p_all/(1.0*laser_cnt);
         if(laser_cnt == 0){
             p_avg = 0;
         }
         if(p_avg>10000){
+            cout<<"CalWeight Error"<<endl;
             while(1){}
         }
         particles[i].weight = p_avg;
         if(p_max_w<p_avg){
             p_max_w = p_avg;
         }
-        // cout<<"p_avg:"<<p_avg<<"| weight:"<<particles[i].weight<<endl<<endl;
     }
 }
 
+/**
+ * Function: 计算在真实位置的粒子权重
+ * Input: input{当前帧激光雷达消息}
+ * Output: 在真实位置的粒子权重
+ **/
 double particle_filter::Cal_realpose_weight(sensor_msgs::LaserScan input){
     int laser_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
-
-
     double p_all = 0.0;
     int laser_cnt = 0;
-    // cout<<"-------------------------------------PARTICLE "<<i<<endl;
+
     for(int k = 0; k < laser_num; k++){
         if(input.ranges[k] >= sensor_range){
             continue;
@@ -473,24 +513,24 @@ double particle_filter::Cal_realpose_weight(sensor_msgs::LaserScan input){
             continue;
         }
         p_all += likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res));
-        // cout<<"li:"<<likeli_map(int(g_laser(0)/map_res), int(g_laser(1)/map_res))<<endl;
-        // cout<<"lixy:" << int(g_laser(0)/map_res) << "," << int(g_laser(1)/map_res) <<endl;
         laser_cnt++;
     }
-    // cout<<"pall:"<<p_all<<endl;
     double p_avg = p_all/(1.0*laser_cnt);
     if(laser_cnt == 0){
         p_avg = 0;
     }
     if(p_avg>10000){
+        cout<<"CalWeight Error"<<endl;
         while(1){}
     }
     return p_avg;
 }
 
+/**
+ * Function: 粒子重采样：轮盘赌方法
+ **/
 void particle_filter::resampling()
 {
-    // TODO: Resampling Step
     vector<double> w_step;
     double w_sum = 0;
     for(int i=0; i<particle_num; i++){
@@ -501,15 +541,14 @@ void particle_filter::resampling()
     particle new_particles[particle_num];
     int resample_num = particle_num-floor(new_ratio*particle_num);
     srand(time(0));
+
     for(int i=0; i<resample_num; i++){
-        
         double randw = rand()%1000/1000.0;
         w_step.push_back(randw);
         sort(w_step.begin(), w_step.end());
-        vector<double>::iterator it=find(w_step.begin(),w_step.end(),randw);///返回的是地址
-        int index=std::distance(w_step.begin(), it);///放入迭代器中得到容器中的位置
+        vector<double>::iterator it=find(w_step.begin(),w_step.end(),randw);    // 返回的是地址
+        int index=std::distance(w_step.begin(), it);    // 放入迭代器中得到容器中的位置
         w_step.erase(it);
-
 
         new_particles[i].id = i;
         new_particles[i].x = particles[index].x;
@@ -524,9 +563,11 @@ void particle_filter::resampling()
     memcpy(particles,new_particles,sizeof(new_particles));
 }
 
+/**
+ * Function: 计算机器人估计位姿 = 粒子位姿加权和
+ **/
 void particle_filter::getFinalPose()
 {   
-    // TODO: Final State Achieve
     state(0) = 0.0;
     state(1) = 0.0;
     state(2) = 0.0;
@@ -535,12 +576,10 @@ void particle_filter::getFinalPose()
         state(0) += particles[i].x*particles[i].weight;
         state(1) += particles[i].y*particles[i].weight;
         state(2) += particles[i].theta*particles[i].weight;
-        // if(i==particle_num-1)
-            // cout<<"thetai:"<<particles[i].theta<<endl;
     }
     // state(2) = angleNorm(state(2));
-    // cout<<"finalstate:"<<state.transpose()<<endl;
 
+    /* 计算和真值的误差 */
     double dx = fabs(real_x - state(0));
     double dy = fabs(real_y - state(1));
 
@@ -550,20 +589,21 @@ void particle_filter::getFinalPose()
 
     std_msgs::Float64 err;
     err.data = sqrt(dx*dx+dy*dy);
-    cout<<"current_error: "<<err.data<<endl;
-    //cout<<"Mean_err: "<<sqrt(dx_mean*dx_mean+dy_mean*dy_mean)<<endl;
+    cout<<"current_error: "<<err.data<<endl;    // 当前帧误差
+    //cout<<"Mean_err: "<<sqrt(dx_mean*dx_mean+dy_mean*dy_mean)<<endl;  // 累积平均误差
     error_pub.publish(err);
 }
 
+/**
+ * Function: 生成新粒子
+ * Output: 新粒子
+ **/
 particle particle_filter::genNewParticle()
 {
-    // TODO: Generate New Particle
     // Define random generator with Gaussian distribution
-    const double mean = 0.0;//均值
-    // const double stdxy = 1;//标准差
-    // const double stdt = 0.1;//标准差
-    const double stdxy = 2;//标准差
-    const double stdt = 0.1;//标准差
+    const double mean = 0.0;    // 均值
+    const double stdxy = 2;     // 标准差 // 若不解决机器人绑架问题可设为1
+    const double stdt = 0.1;    // 标准差
 
     unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine generator(seed);
@@ -586,6 +626,9 @@ particle particle_filter::genNewParticle()
     return newp;
 }
 
+/**
+ * Function: 粒子权重归一化
+ **/
 double particle_filter::weightNorm(){
     double weight_sum = 0.0;
     for(int i=0; i<particle_num; i++){
@@ -597,12 +640,19 @@ double particle_filter::weightNorm(){
     return weight_sum;
 }
 
+/**
+ * Function: 计算发送map_flag的指标值
+ **/
 double particle_filter::calEntropy(){
     double H = 0.0;
+
+    /* 方法一：粒子信息熵(Failed) */
     // for(int i=0; i<particle_num; i++){
     //     double w = particles[i].weight;
     //     H += -w*log2(w);
     // }
+
+    /* 方法二： 粒子中最大的10个权重和与最小的10个权重和的差值 */
     vector<double> w_step;
     for(int i=0; i<particle_num; i++){
         w_step.push_back(particles[i].weight);
@@ -620,10 +670,12 @@ double particle_filter::calEntropy(){
     double w_min_mean = accumulate(w_min.begin(), w_min.end(),0.0);
 
     H = w_max_mean - w_min_mean;
-        
     return H*100.0;
 }
 
+/**
+ * Function: 角度归一化
+ **/
 double particle_filter::angleNorm(double angle)
 {
     // -180 ~ 180
@@ -634,7 +686,9 @@ double particle_filter::angleNorm(double angle)
 	return angle;
 }
 
-
+/**
+ * Function: Pub 所有信息
+ **/
 void particle_filter::publishAll()
 {
     visualization_msgs::MarkerArray particle_markers_msg;
@@ -668,7 +722,6 @@ void particle_filter::publishAll()
 
     // tf
     geometry_msgs::Quaternion quat_ = tf::createQuaternionMsgFromYaw(state(2));
-
     geometry_msgs::TransformStamped pf_trans;
     pf_trans.header.stamp = ros::Time::now();
     pf_trans.header.frame_id = "map";
@@ -680,7 +733,7 @@ void particle_filter::publishAll()
     pf_trans.transform.rotation = quat_;
     tf_broadcaster.sendTransform(pf_trans);
 
-    // OR publish others you want
+    // For rviz 
     nav_msgs::Odometry odom;
     odom.header.stamp = ros::Time::now();
     odom.header.frame_id = "map";//"world_base";
@@ -688,12 +741,12 @@ void particle_filter::publishAll()
     odom.pose.pose.position.x = state(0);
     odom.pose.pose.position.y = state(1);
     odom.pose.pose.position.z = 0.0;
+    // 如果满足阈值要求，将map_flag置1，mapping节点当前帧可以mapping
     if(w_diff < 1.4){
         odom.pose.pose.position.z = 1.0;
     }
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(state(2));
     odom.pose.pose.orientation = odom_quat;
-
     odom_pub.publish(odom);
 
     //For robo_tf node
@@ -704,7 +757,6 @@ void particle_filter::publishAll()
     odom_tf.orientation = odom_quat;
 
     odom_pub_tf.publish(odom_tf);
-
 }
 
 

@@ -15,7 +15,7 @@ using namespace std;
 using namespace Eigen;
 
 
-// structure of the LandMark set, contians the landMarks 
+// LandMark集合的structure
 typedef struct{
     std::vector<float> position_x;
     std::vector<float> position_y;
@@ -23,36 +23,30 @@ typedef struct{
 } LandMarkSet;
 
 class extraction{
-
 public:
 	extraction(ros::NodeHandle &n);
 	~extraction();
     ros::NodeHandle& n;
  
-    // get the clusters
-    float label_dr_threshold;
-    // filter for landmarks extractions
-    float range_threshold;
-    // filter for landmarks extractions
-    float radius_max_th;
-    // filter for landmarks extractions
-    int landMark_min_pt;
+    // landmark参数过滤阈值
+    float label_dr_threshold;               // 判定为不同cluster的距离阈值
+    float range_threshold;                  // 在距离机器人多少半径范围内提取landmark
+    float radius_max_th;                    // 判定一个cluster为landmark的最大半径
+    int landMark_min_pt;                    // 判定为landmark时，cluster中最少要有多少个点
 
-    // listen the ros::laserScan
     ros::Subscriber laser_sub;
-    // publish the landMarks as ros::Markers
     ros::Publisher landMark_pub;
     ros::Publisher laser_pub;
 
-    // main process
+    // 回调函数-将laser分成不同的cluster，并判定是否为圆柱landmark(主函数)
     void process(sensor_msgs::LaserScan input);
-    // filter & extraction process
+    // 回调函数-判定每个label的laser cluster是否为圆柱landmark
     LandMarkSet extractLandMark(sensor_msgs::LaserScan input);
-    // 最小二乘拟合圆，返回终点
+    // 最小二乘拟合圆，返回圆心点
     Eigen::Vector2d fitcircle(std::vector<Eigen::Vector2d> &points);
-    // publish the landMarks
+    // Pub Landmark
     void publishLandMark(LandMarkSet input);
-    // 2D euclidean distance calculation
+    // 计算2点的欧式距离
     float calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb);
 };
 
@@ -72,6 +66,10 @@ extraction::extraction(ros::NodeHandle& n):n(n)
     laser_pub = n.advertise<sensor_msgs::LaserScan>("myscan",1);
 }
 
+/**
+ * Function: 回调函数-将laser分成不同的cluster，并判定是否为圆柱landmark
+ * Input: input{gazebo发出的laser消息}
+ **/
 void extraction::process(sensor_msgs::LaserScan input)
 {   
     double time_0 = (double)ros::Time::now().toSec();
@@ -79,13 +77,12 @@ void extraction::process(sensor_msgs::LaserScan input)
 
     int label = 0;
     sensor_msgs::LaserScan laser_extr = input;
-
     int total_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
 
-    // init the previous/last point
+    // 初始化上一个激光点
     Vector2d last_xy(input.ranges[0] * std::cos(input.angle_min), input.ranges[0] * std::sin(input.angle_min));
 
-    // set the intensities as labels
+    // 将laser分成不同的cluster，存于intensities属性中
     Vector2d curr_xy;
     float angle, delta_dis;
     for(int i=0; i<total_num; i++)
@@ -93,61 +90,50 @@ void extraction::process(sensor_msgs::LaserScan input)
         angle = input.angle_min + i * input.angle_increment;
         curr_xy << input.ranges[i] * std::cos(angle), input.ranges[i] * std::sin(angle);
         
-        delta_dis = this->calc_dist(curr_xy, last_xy); //the distance from last point
-        //cout<<"deldis"<<delta_dis<<endl;
+        delta_dis = this->calc_dist(curr_xy, last_xy); // 与上一个激光点的距离
         if(delta_dis > label_dr_threshold)
             label++;
 
         laser_extr.intensities[i] = label;
-
         last_xy = curr_xy;
     }
 
-    // cout<<"Total original labels: "<<label<<endl;
-
+    // 判定是否为圆柱landmark
     LandMarkSet landmarks_ = this->extractLandMark(laser_extr);
-
     this->laser_pub.publish(laser_extr);
-
     this->publishLandMark(landmarks_);
-
     double time_1 = (double)ros::Time::now().toSec();
     // cout<<"time_cost:  "<<time_1-time_0<<endl;
 }
 
+/**
+ * Function: 回调函数-判定每个label的laser cluster是否为圆柱landmark
+ * Input: input{加入label[0,...]的laser消息}
+ * Output: 提取出的Landmark集合
+ **/
 LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
 {   
     int total_num = (input.angle_max - input.angle_min) / input.angle_increment + 1;
-
     LandMarkSet landMarks;
-
-    // TODO: please code by yourself
     float angle;
-
     double dis;
 
     int cnt = 0;
-    int len = 1;
-    int exp_label = 0;
+    int len = 1;                // 上1簇中的点的数量
+    int exp_label = 0;          // 希望取到的下一个点的label值
 
     bool firstlast = true;
-    bool check_right = true;
+    bool check_right = true;    // 检查landmark是否通过的flag
 
-    //局部坐标系下的landmark坐标
-    
-    Vector2d last_xy;//上1簇的第一个点
-    Vector2d form_xy;//上1簇的最后一个点
-    Vector2d curr_xy;//这一簇的第一个点
-    
+    // 局部坐标系下的landmark坐标
+    Vector2d last_xy;           // 上1簇的第一个点
+    Vector2d form_xy;           // 上1簇的最后一个点
+    Vector2d curr_xy;           // 这一簇的第一个点
 
     for(int i=0; i<total_num - landMark_min_pt ; i++)  //Attention!! total_num - landMark_min_pt 否则可能出现位于激光sweep开始和结束位置重复识别
-    {   
-
-        
-        
+    {
+        /* 轮到希望取到的下一个点的label值 */
         if(input.intensities[i] == exp_label){
-            
-            // cout<<"label:"<<input.intensities[i]-1 <<endl;
             angle = input.angle_min + i * input.angle_increment;
             curr_xy << input.ranges[i] * std::cos(angle), input.ranges[i] * std::sin(angle);
 
@@ -160,16 +146,14 @@ LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
             angle = input.angle_min + (i-1) * input.angle_increment;
             form_xy << input.ranges[i-1] * std::cos(angle), input.ranges[i-1] * std::sin(angle);
             dis = calc_dist(last_xy, form_xy); //2 point at begin & end of the cluster
-            // cout<<"dis"<<dis<<endl;
             double dis_from_robot = calc_dist(Vector2d(0,0), Vector2d((last_xy(0)+form_xy(0))/2,(last_xy(1)+form_xy(1))/2));
 
+            /* 判断上一簇是否符合landmark参数过滤阈值  */
             if(0.1 < dis && dis < radius_max_th && len >= landMark_min_pt && dis_from_robot < range_threshold){
 
-
-                // Check feature
-                int feature_label = input.intensities[i-1];
-                
-                
+                /* 进一步检查特征 */
+                int feature_label = input.intensities[i-1]; // 获取上一簇label值(记为第n簇)
+                // 检查第n-2，n-3簇的最后一个点是否距离第n簇第一个点距离过小
                 for(int prev_2_label = feature_label-3;prev_2_label<=feature_label-2;prev_2_label++){
                     if(prev_2_label > 0){
                         int j = i;
@@ -187,6 +171,7 @@ LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
                     }                   
                 }
 
+                // 检查第n+2，n+3簇的第一个点是否距离第n簇最后一个点距离过小
                 for(int after_2_label = feature_label+3;after_2_label>=feature_label+2;after_2_label--){
                     int k = i;
                     while(input.intensities[k]!=after_2_label){
@@ -207,10 +192,7 @@ LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
                     }
                 }
 
-
-
-
-
+                /* 如果检查通过，计算landmark圆心并存储 */
                 if(check_right){
                     landMarks.id.push_back(cnt);
                     cnt++;
@@ -242,7 +224,6 @@ LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
 
             }
 
-
             last_xy = curr_xy;
             exp_label++;
             len = 1;
@@ -253,14 +234,14 @@ LandMarkSet extraction::extractLandMark(sensor_msgs::LaserScan input)
 
 
     }
-    // cout<<"cnt:"<<cnt<<endl;
-
-
-
     return landMarks;
 }
 
-/*最小二乘拟合圆,不计算半径*/
+/**
+ * Function: 最小二乘拟合圆，获取圆心，不计算半径
+ * Input: points{一个簇的所有点}
+ * Output: 圆心
+ **/
 Eigen::Vector2d extraction::fitcircle(std::vector<Eigen::Vector2d> &points)
 {
     Eigen::Vector2d mean_pos;
@@ -297,17 +278,18 @@ Eigen::Vector2d extraction::fitcircle(std::vector<Eigen::Vector2d> &points)
     mean_pos(1) = b/(-2);
 }
 
+/**
+ * Function: Pub Landmark
+ * Input: input{Landmark集合}
+ **/
 void extraction::publishLandMark(LandMarkSet input)
 {
     if(input.id.size() <= 0)
         return;
 
     visualization_msgs::MarkerArray landMark_array_msg;
-
     landMark_array_msg.markers.resize(input.id.size());
-
     cout<<endl<<"---------------------------------All:"<<input.id.size()<<endl;
-
 
     for(int i=0; i<input.id.size(); i++)
     {
@@ -335,22 +317,22 @@ void extraction::publishLandMark(LandMarkSet input)
         landMark_array_msg.markers[i].color.g = 0.0;
         landMark_array_msg.markers[i].color.b = 1.0;
 
-
         ostringstream str;
         str<<i;
         landMark_array_msg.markers[i].text = str.str();
 
         cout<<"id: "<<i+1;
         cout<<"| x,y: "<<input.position_x.at(i)<<", "<<input.position_y.at(i)<<endl;
-
     }
 
     landMark_pub.publish(landMark_array_msg);
 }
 
+/**
+ * Function: 计算2点的欧式距离
+ **/
 float extraction::calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb)
 {
-    // TODO: please code by yourself
     return (pta - ptb).norm();
 }
 

@@ -23,7 +23,6 @@ using namespace std;
 using namespace Eigen;
 
 class ekf{
-
 public:
     ekf(ros::NodeHandle &n);
 	~ekf();
@@ -61,7 +60,7 @@ public:
     void predict(nav_msgs::Odometry odom);
     // update phase
     void update(visualization_msgs::MarkerArray input);
-
+    // 更新存储于state中的landmark，加入新的landmark
     int updateFeatureMap(Eigen::Vector2d lm_pos);
     // landMarks to XY matrix
     Eigen::MatrixXd landMarksToXY(visualization_msgs::MarkerArray input);
@@ -69,14 +68,13 @@ public:
     MatrixXd getMotionJacobian();
     // get observation Jacobian
     Eigen::MatrixXd getObservJacobian(double q,Vector2d& delta,int lm_id);
-    Eigen::MatrixXd getObservJacobianXY(Vector3d sta, double x, double y);
     // angle normalization
     double angleNorm(double angle);
     // find nearest map points
     int findNearestMap(Vector2d lm_pos);
-
+    // 将xy坐标转换为极坐标
     Vector2d cartesianToPolar(double x, double y);
-
+    // 将局部坐标系下的点转换到世界坐标系
     Eigen::Vector2d tranToGlobal(Eigen::Vector2d localP);
 
     // ros-related subscribers, publishers and broadcasters
@@ -98,11 +96,10 @@ public:
     // transform matrix to pose
     Vector3d getPose(Matrix3d T);
 
+    // 误差计算相关
     int update_cnt = 0;
     double dx_mean = 0;
     double dy_mean = 0;
-
-    int mode;
 
     double time_origin;
 
@@ -126,7 +123,6 @@ ekf::ekf(ros::NodeHandle& n):
     n.getParam("/ekf/noise_motion", noise_motion);
     n.getParam("/ekf/noise_measure", noise_measure);
 
-    n.getParam("/ekf/mode", mode);
     this->initAll();
 
     isFirstScan = true;
@@ -142,9 +138,12 @@ ekf::ekf(ros::NodeHandle& n):
     cout<<"INIT Done"<<endl;
 }
 
+/**
+ * Function: 回调函数-接收icp-odom，运动模型
+ * Input: odom{ICP里程计}
+ **/
 void ekf::predict(nav_msgs::Odometry odom)
 {
-
     cout << "---------------------Prediction-------------------" << endl;
     cout<<"time:"<<odom.header.stamp <<endl;
 
@@ -162,10 +161,6 @@ void ekf::predict(nav_msgs::Odometry odom)
     dy = nowy - last_y;
     dt = nowt - last_t;
 
-    // dx = 0;
-    // dy = 0;
-    // dt = 0;
-
     // Calculate Pos
     status[0] = status[0] + dx;
     status[1] = status[1] + dy;
@@ -176,7 +171,6 @@ void ekf::predict(nav_msgs::Odometry odom)
     last_y = nowy;
     last_t = nowt;
 
-
     // Calculate Cov
     MatrixXd G;
     G = getMotionJacobian();
@@ -186,6 +180,11 @@ void ekf::predict(nav_msgs::Odometry odom)
     pre_num++;
 }
 
+/**
+ * Function: 将局部坐标系下的点转换到世界坐标系
+ * Input: localP{局部坐标系下的点}
+ * Output: globalP{世界坐标系下的点}
+ **/
 Eigen::Vector2d ekf::tranToGlobal(Eigen::Vector2d localP){
     Vector2d globalP;
 
@@ -196,9 +195,12 @@ Eigen::Vector2d ekf::tranToGlobal(Eigen::Vector2d localP){
     return globalP;
 }
 
+/**
+ * Function: 回调函数-接收landmark，观测模型
+ * Input: input{landmark set}
+ **/
 void ekf::update(visualization_msgs::MarkerArray input)
 {
-
     cout << "---------------------Update-------------------" << endl;
     double time_0 = (double)ros::Time::now().toSec();
     cout<<"time:"<<input.markers[0].header.stamp<<endl;
@@ -216,25 +218,19 @@ void ekf::update(visualization_msgs::MarkerArray input)
             lm_id = updateFeatureMap(lm_pos);
         }
 
-
         double lm_x = status(3+2*lm_id), lm_y = status(3+2*lm_id+1);
-            // cout<<"now_lm:"<<lm_x<<","<<lm_y<<endl;
         double r_x = status(0), r_y = status(1), theta = status(2);
-            // cout<<"nowt:"<<r_x<<","<<r_y<<","<<theta<<endl;
 
         // Real Observation
         Vector2d z_real = cartesianToPolar(landMarkFeatures(0,i),landMarkFeatures(1,i));
-            // cout<<"z_real:"<<z_real.transpose()<<endl;
 
         // Predict Observation
         Vector2d z_pre;
         Vector2d delta = Vector2d(lm_x-r_x, lm_y-r_y);
-            // cout<<"delta:"<<delta.transpose()<<endl;
         double q = delta.transpose()*delta;
-            // cout<<"q:"<<q<<endl;
+
         z_pre(0) = sqrt(q);
         z_pre(1) = angleNorm(atan2(delta(1),delta(0))-theta);
-            // cout<<"z_pre:"<<z_pre.transpose()<<endl;
 
         // Difference between Real Observation & Predict Observation
         Vector2d z_diff;
@@ -256,9 +252,6 @@ void ekf::update(visualization_msgs::MarkerArray input)
             // cout<<"H:"<<endl<<H<<endl;
             // cout<<"covariance:"<<endl<<covariance.block(0,0,3*nonZero_cnt,3*nonZero_cnt)<<endl;
     }
-
-    
-
 
     // Get error from truth value
   //   tf::StampedTransform transform;
@@ -286,10 +279,6 @@ void ekf::update(visualization_msgs::MarkerArray input)
   //   error_pub.publish(err);
 
 
-
-
-
-
     this->publishResult();
 
     double time_1 = (double)ros::Time::now().toSec();
@@ -300,6 +289,9 @@ void ekf::update(visualization_msgs::MarkerArray input)
     upd_num++;
 }
 
+/**
+ * Function: 相关参数初始化
+ **/
 void ekf::initAll()
 {
     //status
@@ -328,10 +320,14 @@ void ekf::initAll()
     pre_num = 0; upd_num = 0;
 }
 
+/**
+ * Function: 将Landmark Set转换为3×n矩阵形式
+ * Input: input{Landmark Set}
+ * Output: 3×n齐次坐标矩阵
+ **/
 Eigen::MatrixXd ekf::landMarksToXY(visualization_msgs::MarkerArray input)
 {
     int markerSize = input.markers.size();
-
     Eigen::MatrixXd pc = Eigen::MatrixXd::Ones(3, markerSize);
 
     for(int i=0; i<markerSize; i++)
@@ -342,6 +338,11 @@ Eigen::MatrixXd ekf::landMarksToXY(visualization_msgs::MarkerArray input)
     return pc;
 }
 
+/**
+ * Function: 更新存储于state中的landmark，加入新的landmark
+ * Input: lm_pos{将加入新的landmark的全局坐标}
+ * Output: lm_id{新加入的landmark的id}
+ **/
 int ekf::updateFeatureMap(Eigen::Vector2d lm_pos)
 {   
     status(3+2*nonZero_cnt) = lm_pos(0);
@@ -351,9 +352,13 @@ int ekf::updateFeatureMap(Eigen::Vector2d lm_pos)
     return lm_id;
 }
 
+/**
+ * Function: 查找state中距离输入lm距离最小的landmark
+ * Input: lm_pos{输入的landmark的全局坐标}
+ * Output: mincol{state中距离输入lm距离最小的landmark id}
+ **/
 int ekf::findNearestMap(Vector2d lm_pos)
 {   
-
     if(nonZero_cnt == 0)
         return -1;
     int mincol;
@@ -367,7 +372,6 @@ int ekf::findNearestMap(Vector2d lm_pos)
     VectorXd::Index minInd;
     double minNum;
 
-
     temp_LM.colwise() -= lm_pos;
     distance = temp_LM.array().square().colwise().sum();
     minNum = distance.minCoeff(&minInd);
@@ -375,20 +379,26 @@ int ekf::findNearestMap(Vector2d lm_pos)
     if(minNum >= match_th)
         return -1;
 
-
     mincol = minInd;
     return mincol;
-
 }
 
+/**
+ * Function: 获得运动Jacobian矩阵
+ * Output: G{运动Jacobian矩阵}
+ **/
 Eigen::MatrixXd ekf::getMotionJacobian()
 {
     MatrixXd G;
     G = MatrixXd::Identity(3 + landMark_num*2, 3 + landMark_num*2);
     return G;
-
 }
 
+/**
+ * Function: 获得观测Jacobian矩阵
+ * Input: q{lm和robot距离的平方}，delta{lm和robot距离}，lm_id{观测的那个lm的id}
+ * Output: H{观测Jacobian矩阵}
+ **/
 Eigen::MatrixXd ekf::getObservJacobian(double q,Vector2d& delta,int lm_id)
 {
     Eigen::MatrixXd H_low;
@@ -402,12 +412,14 @@ Eigen::MatrixXd ekf::getObservJacobian(double q,Vector2d& delta,int lm_id)
     F.block(0, 0, 3, 3) = MatrixXd::Identity(3, 3);
     F.block(3, 3+2*lm_id, 2, 2) = MatrixXd::Identity(2, 2);
 
-
     return H_low*F;
 }
 
-
-
+/**
+ * Function: 将xy坐标转换为极坐标
+ * Input: x{x}，y{y}
+ * Output: r_phi{极坐标}
+ **/
 Vector2d ekf::cartesianToPolar(double x, double y)
 {
     float r = std::sqrt(x*x + y*y);
@@ -416,7 +428,11 @@ Vector2d ekf::cartesianToPolar(double x, double y)
     return r_phi;
 }
 
-
+/**
+ * Function: 角度归一化
+ * Input: angle
+ * Output: angle{[-pi,pi]}
+ **/
 double ekf::angleNorm(double angle)
 {
     // -180 ~ 180
@@ -427,17 +443,11 @@ double ekf::angleNorm(double angle)
     return angle;
 }
 
-
-// double ekf::angleNorm(double angle)
-// {
-//     // 0 ~ 360
-//     while(angle > 2*M_PI)
-//         angle = angle - 2*M_PI;
-//     while(angle < 0)
-//         angle = angle + 2*M_PI;
-//     return angle;
-// }
-
+/**
+ * Function: pose to transform matrix
+ * Input: sta{状态增量向量}
+ * Output: 2D齐次变化矩阵
+ **/
 Matrix3d ekf::staToMatrix(Vector3d sta)
 {
     Matrix3d RT;
@@ -447,6 +457,11 @@ Matrix3d ekf::staToMatrix(Vector3d sta)
     return RT;
 }
 
+/**
+ * Function: transform matrix to pose 
+ * Input: T{2D齐次变化矩阵}
+ * Output: pose{状态增量向量}
+ **/
 Vector3d ekf::getPose(Matrix3d T)
 {
     Vector3d pose;
@@ -456,6 +471,9 @@ Vector3d ekf::getPose(Matrix3d T)
     return pose;
 }
 
+/**
+ * Function: Publish 
+ **/
 void ekf::publishResult()
 {
     // tf
@@ -472,7 +490,6 @@ void ekf::publishResult()
     ekf_trans.transform.rotation = odom_quat;
 
     ekf_broadcaster.sendTransform(ekf_trans);
-
 
 
     nav_msgs::Odometry odom;

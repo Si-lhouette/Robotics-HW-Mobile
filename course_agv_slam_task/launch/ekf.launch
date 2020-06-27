@@ -11,7 +11,6 @@
 		<param name="landMark_num" value="120"/>
 		<param name="noise_motion" value="0.2"/>
 		<param name="noise_measure" value="0.05"/>
-		<param name="mode" value="0"/>
 	</node>
 
 </launch>

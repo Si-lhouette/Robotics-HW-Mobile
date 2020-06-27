@@ -23,6 +23,9 @@
 using namespace std;
 using namespace Eigen;
 
+/**
+ * Structure: 记录两帧之间匹配的index和匹配特征的距离
+ **/
 typedef struct{
     std::vector<float> distances;
     std::vector<int> src_indices;
@@ -30,9 +33,7 @@ typedef struct{
 } NeighBor;
 
 class icp_lm{
-
 public:
-
     icp_lm(ros::NodeHandle &n);
     ~icp_lm();
     ros::NodeHandle& n;
@@ -41,11 +42,9 @@ public:
     double robot_x;
     double robot_y;
     double robot_theta;
-    // sensor states = robot_x_y_theta
-    Vector3d sensor_sta;
+    Vector3d sensor_sta;    // sensor states = robot_x_y_theta
 
-
-    // var for Wheel_v odometry
+    // 轮式里程计相关变量
     double leftv = 0.0;
     double rightv = 0.0;
     double timelast;
@@ -53,65 +52,58 @@ public:
     double dy = 0.0;
     double dtheta = 0.0;
     double theta = 0.0;
-    bool setzero = false;
+    bool setzero = false;   // 清零flag：每获取一遍轮式里程计差值，就将其清零(更好的做法是将轮式里程计单独写为节点，并做好同步)
 
     double rx = 1.0/0.08;
     double rw = (0.1+0.08/6)/0.08;
 
-    // max iterations
-    int max_iter;
-    // distance threshold for filter the matching points
-    double dis_th_normal;
-    // tolerance to stop icp
-    double tolerance;
-    // if is the first scan, set as the map/target
-    bool isFirstScan;
-    // src point cloud matrix
-    MatrixXd src_pc;
-    // target point cloud matrix
-    MatrixXd tar_pc;
-    // min match_cnt
-    int min_match;
+    int max_iter;           // 最大迭代次数
+    double dis_th_normal;   // 匹配点的最大距离
+    double tolerance;       // 迭代的tolerance
+    bool isFirstScan;       // 是否为第一帧
+    MatrixXd src_pc;        // 当前帧点云矩阵
+    MatrixXd tar_pc;        // 上一帧点云矩阵
+    int min_match;          // ICP里程计两帧之间的最少匹配数量
 
-    tf::TransformListener listener;
+    // 误差计算
+    int pub_cnt = 0;
+    double dx_mean = 0;
+    double dy_mean = 0;
 
+    // 跳帧操作变量
+    int skip_num = 0;       // 连续当前帧特征数<min_match的次数
+    bool jump_flag = false; // 跳帧的flag
+    int jump_switch;        // 跳帧操作的总开关
 
-    //Wheel_v odometry
+    /* 轮式里程计 */
+    // 轮式里程计：获得2帧之间的2D旋转矩阵和位移向量
     void calcinitRT(Eigen::Matrix2d& R_all, Eigen::Vector2d& T_all);
+    // 回调函数-接收左轮轮速
     void leftv_callback(const std_msgs::Float64::ConstPtr& msg);
+    // 回调函数-接收右轮轮速，并计算运动差值 
     void rightv_callback(const std_msgs::Float64::ConstPtr& msg);
 
-    // main process
+    // 回调函数-匹配当前帧(src) to 上一帧(tar){Main Function}
     void process(visualization_msgs::MarkerArray input);
-    // landMarks to Eigen::Matrix
+    // 将接收到的Landmark Set转换为3×n矩阵形式
     Eigen::MatrixXd landMarksToMatrix(visualization_msgs::MarkerArray input);
-    // fint the nearest points & filter
+    // Find neareast correspond of 2 frame
     NeighBor findNearest(const Eigen::MatrixXd &src, const Eigen::MatrixXd &tar, double dis_th);
-    // get the transform from two point sets in one iteration
+    // 用SVD法求解 RotationMatrix & translation vector
     Eigen::Matrix3d getTransform(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B);
-    // calc 2D Euclidean distance
-    float calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb);
-    // transform vector states to matrix form
+    // 将状态增量向量转换成2D齐次变化矩阵
     Eigen::Matrix3d staToMatrix(const Vector3d sta);
-
 
 
     // ros-related subscribers, publishers and broadcasters
     ros::Subscriber landMark_sub;
     void publishResult(Eigen::Matrix3d T ,std_msgs::Header the_head);
  	tf::TransformBroadcaster odom_broadcaster;
+    tf::TransformListener listener;
  	ros::Publisher odom_pub;
     ros::Publisher error_pub;
     ros::Subscriber leftv_sub;
     ros::Subscriber rightv_sub;
-
-    int pub_cnt = 0;
-    double dx_mean = 0;
-    double dy_mean = 0;
-
-    int skip_num = 0;
-    bool jump_flag = false;
-    int jump_switch;
 };
 
 icp_lm::~icp_lm()
@@ -142,18 +134,23 @@ icp_lm::icp_lm(ros::NodeHandle& n):
     error_pub = n.advertise<std_msgs::Float64>("icp_error", 1);
 }
 
-
+/**
+ * Function: 回调函数-接收左轮轮速
+ * Input: input{左轮轮速}
+ **/
 void icp_lm::leftv_callback(const std_msgs::Float64::ConstPtr& msg){
-    //cout<<"in left"<<endl;
     this->leftv = msg->data;
 }
+
+/**
+ * Function: 回调函数-接收右轮轮速，并计算运动差值
+ * Input: input{右轮轮速}
+ **/
 void icp_lm::rightv_callback(const std_msgs::Float64::ConstPtr& msg){
-    //cout<<"in right"<<endl;
     this->rightv = msg->data;
 
     double tnow = (double)ros::Time::now().toSec();
     double dt = tnow - this->timelast;
-    //cout<<"dt:"<<dt<<endl;
     if(this->setzero){
         this->dx = 0;
         this->dy = 0;
@@ -163,23 +160,19 @@ void icp_lm::rightv_callback(const std_msgs::Float64::ConstPtr& msg){
 
     double vx = (this->leftv + this->rightv)/(2.0*this->rx);
     double vw = (this->rightv - this->leftv)/(2.0*this->rw);
-    //cout<<"v="<<vx<<", "<<vw<<endl;
     this->dx += vx*dt*cos(sensor_sta(2)+this->dtheta);
     this->dy += vx*dt*sin(sensor_sta(2)+this->dtheta);
-
-    // this->dx += vx*dt*cos(theta + this->dtheta);
-    // this->dy += vx*dt*sin(theta + this->dtheta);
     this->dtheta += vw*dt;
-
     this->timelast = tnow;
 }
 
-/* Wheel_v Odometry: record the dx dy dtheta between 2 frames */
+/**
+ * Function: 轮式里程计：获得2帧之间的2D旋转矩阵和位移向量
+ * Input: R_all{2D旋转矩阵}，T_all{位移向量}
+ **/
 void icp_lm::calcinitRT(Eigen::Matrix2d& R_all, Eigen::Vector2d& T_all){
-    //cout<<"in cal"<<endl;
     Vector3d sta;
     sta << this->dx, this->dy, this->dtheta;
-    //cout<<"dxdydt:"<<sta.transpose()<<endl;
     Matrix3d RT = staToMatrix(sta);
     R_all = RT.block(0,0,2,2);
     T_all = RT.block(0,2,2,1);
@@ -187,8 +180,10 @@ void icp_lm::calcinitRT(Eigen::Matrix2d& R_all, Eigen::Vector2d& T_all){
     this->setzero = true;
 }
 
-
-/* Match Current Frame(src) to Last Frame(tar) */
+/**
+ * Function: 回调函数-匹配当前帧(src) to 上一帧(tar)
+ * Input: input{landmark set}
+ **/
 void icp_lm::process(visualization_msgs::MarkerArray input)
 {   
     std_msgs::Header the_head;
@@ -197,7 +192,7 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
     
     double time_0 = (double)ros::Time::now().toSec();
 
-    // 1. If the first scan
+    /* 1. 如果是第一帧 */
     if(isFirstScan)
     {
         tar_pc = this->landMarksToMatrix(input);
@@ -212,10 +207,8 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
     }
 
     src_pc = this->landMarksToMatrix(input);// get current frame points
-    
 
-
-    // 2. Prepare
+    /* 2. Prepare */
     // make a copy
     MatrixXd src_pc_copy;
     src_pc_copy = src_pc;
@@ -227,15 +220,12 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
     T_all << 0.0,0.0;
     double elast = 10000; //error of last time 
 
-
-    // Use the wheel_v odometry to set the init tranform Matrix
+    // 用轮式里程计初始化R&T矩阵
     // calcinitRT(R_all, T_all); //!! YOU CAN COMMENT IT, NOT REALLY USEFUL
     // Transform_acc.block(0,0,2,2) = R_all;
     // Transform_acc.block(0,2,2,1) = T_all;
 
-
-
-    // 3. Check the num of feature in src
+    /* 3. 检查当前帧src中的特征数量 */
     if(src_pc.cols() < min_match){
         //this->publishResult(Transform_acc); //pub wheel_odometry Transform
         skip_num++;
@@ -245,6 +235,7 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
         cout<<"< min"<<endl;
         return;
     }
+    // 当src中特征数量连续3次<min_match时 -> 跳帧操作
     if(jump_flag && jump_switch)
     {
         tar_pc = this->landMarksToMatrix(input);
@@ -259,17 +250,13 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
     }
 
 
-    // 4. Main LOOP for Match
+    /* 4. 匹配的 Main LOOP */
     for(int i=0; i<max_iter; i++)
     {
-
-        // cout<<"loop_"<<i<<endl;
-
         //4.1. Find neareast correspond
         NeighBor s_t_near;
         s_t_near = findNearest(src_pc, tar_pc, dis_th_normal);
         int s_num = s_t_near.src_indices.size();
-
 
         MatrixXd tar_pcn;
         MatrixXd src_pcn;
@@ -295,15 +282,11 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
         }
         skip_num = 0;
 
-
-
-
         //4.2. Solve for RotationMatrix & translation vector
         MatrixXd T = Eigen::MatrixXd::Identity(3,3);
         T = getTransform(src_pcn, tar_pcn);
         Matrix2d R_12 = T.block(0,0,2,2);
         Vector2d T_12 = T.block(0,2,2,1);
-
 
         //4.3. Updata R&T
         T_all = R_12 * T_all + T_12;
@@ -311,7 +294,6 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
         Transform_acc.block(0,0,2,2) = R_all;
         Transform_acc.block(0,2,2,1) = T_all;
         src_pc = Transform_acc*src_pc_copy;
-
 
         //4.4. Cheak error tolerance
         double e = accumulate(s_t_near.distances.begin(), s_t_near.distances.end(), 0.0) / s_num;
@@ -340,6 +322,11 @@ void icp_lm::process(visualization_msgs::MarkerArray input)
     cout<<"time_cost:  "<<time_1-time_0<<endl;
 }
 
+/**
+ * Function: 将接收到的Landmark Set转换为3×n矩阵形式
+ * Input: input{Landmark Set}
+ * Output: 3×n齐次坐标矩阵
+ **/
 Eigen::MatrixXd icp_lm::landMarksToMatrix(visualization_msgs::MarkerArray input)
 {
     int markerSize = input.markers.size();
@@ -355,7 +342,11 @@ Eigen::MatrixXd icp_lm::landMarksToMatrix(visualization_msgs::MarkerArray input)
     return pc;
 }
 
-/* Find neareast correspond of 2 frame */
+/**
+ * Function: Find neareast correspond of 2 frame
+ * Input: src{当前帧点云}，tar{上一帧点云}，dis_th{两帧之间匹配特征的距离阈值}
+ * Output: NeighBor{src和tar对应特征的index}
+ **/
 NeighBor icp_lm::findNearest(const Eigen::MatrixXd &src, const Eigen::MatrixXd &tar, double dis_th)
 {
     vector<float> dist;
@@ -391,14 +382,17 @@ NeighBor icp_lm::findNearest(const Eigen::MatrixXd &src, const Eigen::MatrixXd &
     return res;
 }
 
-/* Solve for RotationMatrix & translation vector */
+/**
+ * Function: 用SVD法求解 RotationMatrix & translation vector
+ * Input: src{匹配后的当前帧点云}，tar{匹配后的上一帧点云}
+ * Output: T{T*src=tar}
+ **/
 Eigen::Matrix3d icp_lm::getTransform(const Eigen::MatrixXd &src, const Eigen::MatrixXd &tar)
 {
     //copy input
     MatrixXd src_pcn = src;
     MatrixXd tar_pcn = tar;
     int s_num = src.cols();
-
 
     //Decentralization
     double tx_mean = tar_pcn.row(0).mean();
@@ -407,28 +401,21 @@ Eigen::Matrix3d icp_lm::getTransform(const Eigen::MatrixXd &src, const Eigen::Ma
     tar_pcn.row(0) -=  Eigen::MatrixXd::Constant(1, s_num, tx_mean);
     tar_pcn.row(1) -=  Eigen::MatrixXd::Constant(1, s_num, ty_mean);
 
-
-
     double sx_mean = src_pcn.row(0).mean();
     double sy_mean = src_pcn.row(1).mean();
     src_pcn.row(0) -=  Eigen::MatrixXd::Constant(1, s_num, sx_mean);
     src_pcn.row(1) -=  Eigen::MatrixXd::Constant(1, s_num, sy_mean); 
 
-
     MatrixXd W = Eigen::MatrixXd::Zero(2,2);
     W = src_pcn.topRows(2) * tar_pcn.topRows(2).transpose();
-
 
     // SVD on W
     Eigen::JacobiSVD<Eigen::Matrix2d> svd(W, Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix2d U = svd.matrixU();
     Eigen::Matrix2d V = svd.matrixV();
 
-
-
     Eigen::Matrix2d R_12 = V* (U.transpose());
     Eigen::Vector2d T_12 = Eigen::Vector2d(tx_mean, ty_mean) - R_12 * Eigen::Vector2d(sx_mean, sy_mean);
-
 
     MatrixXd T = Eigen::MatrixXd::Identity(3,3);
     T.block(0,0,2,2) = R_12;
@@ -437,13 +424,11 @@ Eigen::Matrix3d icp_lm::getTransform(const Eigen::MatrixXd &src, const Eigen::Ma
     return T;
 }
 
-
-
-// float icp_lm::calc_dist(const Eigen::Vector2d &pta, const Eigen::Vector2d &ptb)
-// {
-//     // TODO: please code by yourself
-// }
-
+/**
+ * Function: 将状态增量向量转换成2D齐次变化矩阵
+ * Input: sta{状态增量向量}
+ * Output: 2D齐次变化矩阵
+ **/
 Eigen::Matrix3d icp_lm::staToMatrix(Eigen::Vector3d sta)
 {
 	Matrix3d RT;
@@ -453,6 +438,10 @@ Eigen::Matrix3d icp_lm::staToMatrix(Eigen::Vector3d sta)
     return RT;
 }
 
+/**
+ * Function: Publish
+ * Input: T{T*src=tar}，the_head{接收到的landmark set的消息头}
+ **/
 void icp_lm::publishResult(Eigen::Matrix3d T ,std_msgs::Header the_head)
 {	
     float delta_yaw = atan2(T(1,0), T(0,0));
@@ -490,8 +479,6 @@ void icp_lm::publishResult(Eigen::Matrix3d T ,std_msgs::Header the_head)
     odom.pose.pose.orientation = odom_quat;
 
     odom_pub.publish(odom);
-
-
 
     // tf error calculate
     // tf::StampedTransform transform;
