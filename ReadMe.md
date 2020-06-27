@@ -17,6 +17,8 @@ EKF-SLAM系统只有DWA局部轨迹规划避障，未加入路径重规划.（�
 
 故代码仅上传了实验5和实验8代码，其中实验8代码`course_agv_slam_task`包部分做了规范注释.
 
+
+
 ### File
 
 | Folder |  Presentation   |
@@ -26,6 +28,8 @@ EKF-SLAM系统只有DWA局部轨迹规划避障，未加入路径重规划.（�
 | /video | 实验5&8视频结果 |
 
 详细文档见`/doc`.
+
+
 
 ### Run
 
@@ -52,6 +56,8 @@ roslaunch course_agv_slam_task mapping.launch
 roslaunch course_agv_slam_task icp_exlm.launch
 ```
 
+
+
 ### Depends
 
 Eigen 3.3.7
@@ -68,6 +74,8 @@ sudo apt-get install ros-kinetic-map-server
 
 GAZEBO激光仿真有CPU和GPU2种模式，CPU模式无法很好地完成仿真，激光配置的修改参见`/doc/1轨迹规划及运动控制.pdf`.
 
+
+
 ### Video Screenshot
 
 5_EKF-SLAM:
@@ -76,7 +84,9 @@ GAZEBO激光仿真有CPU和GPU2种模式，CPU模式无法很好地完成仿真�
 
 8_粒子滤波定位+动态地图构建+重规划:
 
-<img src="./doc/img/8_PF.png">粒子滤波定位+动态地图构建+重规划
+<img src="./doc/img/8_PF.png">
+
+
 
 ### Comment
 
